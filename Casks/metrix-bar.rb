@@ -1,8 +1,8 @@
 cask "metrix-bar" do
   version "0.0.1"
-  sha256 "02676a75211430c6a9f0ea4cd204eef0e0292d5180dd148168ffa09010f284dc"
+  sha256 "f765647e815e7f9b3394d030d673726fa13f4ee960e01d3961a62ea2cea12fa3"
 
-  url "https://downloads.agili.app/releases/#{version}/10.6ef18d92fcb2693a/Metrix.Bar-#{version}.dmg"
+  url "https://downloads.agili.app/metrix-bar/releases/#{version}/13.5c557dc9d0e17789/Metrix.Bar-#{version}.zip"
   name "Metrix.Bar"
   desc "A minimal menu bar metrics monitor"
   homepage "https://agili.app"
