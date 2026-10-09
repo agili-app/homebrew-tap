@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 从产品 appcast 同步 Cask：解析最新 zip 的 version/url，下载算 sha256，回写 Casks/<token>.rb。
+# 从产品 appcast 同步 Cask：取最新 item 的 zip version/url，下载算 sha256，回写 Casks/<token>.rb。
 # 用法：update-cask.sh <token> <appcast-url>
 #   ./update-cask.sh tinymd     https://downloads.agili.app/tinymd-app/appcast.xml
 #   ./update-cask.sh metrix-bar https://downloads.agili.app/metrix-bar/appcast.xml
@@ -11,16 +11,22 @@ cask_file="Casks/${token}.rb"
 
 [ -f "$cask_file" ] || { echo "no such cask: $cask_file" >&2; exit 1; }
 
-xml="$(curl -fsSL "$appcast")"
+# 用 ruby 的 REXML 解析 appcast，取 sparkle:version 最大的 item 的 zip url 与展示版本，
+# 避免"第一个 item 就是最新"的假设，也精确排除 .delta 增量包。
+read -r version url < <(
+  curl -fsSL "$appcast" | ruby -rrexml/document -e '
+    doc = REXML::Document.new(STDIN.read)
+    item = doc.get_elements("//item").max_by do |i|
+      i.elements["sparkle:version"]&.text.to_i
+    end
+    enc = item&.elements&.detect { |e| e.name == "enclosure" && e.attributes["url"]&.end_with?(".zip") }
+    ver = item&.elements&.[]("sparkle:shortVersionString")&.text
+    abort "no zip enclosure" unless enc && ver
+    puts "#{ver} #{enc.attributes["url"]}"
+  '
+)
 
-# 取第一个 item 的 shortVersionString 与 .zip enclosure url（跳过 .delta 增量包）
-version="$(printf '%s' "$xml" | grep -oE '<sparkle:shortVersionString>[^<]+' | head -1 | sed 's/.*>//')"
-url="$(printf '%s' "$xml" | grep -oE 'url="[^"]+\.zip"' | head -1 | sed 's/^url="//; s/"$//')"
-
-[ -n "$version" ] || { echo "no sparkle:shortVersionString in appcast" >&2; exit 1; }
-[ -n "$url" ]     || { echo "no .zip enclosure url in appcast" >&2; exit 1; }
-
-# 已是最新（version 与 url 都一致）则跳过
+# version/url 都已是最新则跳过（幂等）
 if grep -q "version \"$version\"" "$cask_file" && grep -qF "$url" "$cask_file"; then
   echo "$token already at $version"
   exit 0
@@ -29,11 +35,14 @@ fi
 sha256="$(curl -fsSL "$url" | shasum -a 256 | awk '{print $1}')"
 echo "$token -> $version  $url  sha256:$sha256"
 
-# 回写三行：version / sha256 / url
-sed -i '' \
-  -e "s|^  version \".*\"|  version \"$version\"|" \
-  -e "s|^  sha256 \".*\"|  sha256 \"$sha256\"|" \
-  -e "s|^  url \".*\"|  url \"$url\"|" \
-  "$cask_file"
+# ruby 写回三行，跨 GNU/macOS 一致，无需 sed -i 平台差异
+ruby -e '
+  f = ARGV[0]
+  s = File.read(f)
+  s.sub!(/^  version ".*"/,  %(  version "#{ARGV[1]}"))
+  s.sub!(/^  sha256 ".*"/,   %(  sha256 "#{ARGV[2]}"))
+  s.sub!(/^  url ".*"/,      %(  url "#{ARGV[3]}"))
+  File.write(f, s)
+' "$cask_file" "$version" "$sha256" "$url"
 
 echo "updated $cask_file"
