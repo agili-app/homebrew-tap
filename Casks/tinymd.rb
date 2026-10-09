@@ -7,7 +7,10 @@ cask "tinymd" do
   desc "A minimal Markdown editor"
   homepage "https://agili.app"
 
-  depends_on macos: ">= 15.3"
+  # macOS 15.3+ required; Homebrew only models whole releases, so :sequoia (>= 15.0)
+  # is the closest valid floor. The 15.0–15.2 window is narrowed by the app's own
+  # LSMinimumSystemVersion on launch.
+  depends_on macos: :sequoia
   auto_updates true
 
   app "TinyMD.app"

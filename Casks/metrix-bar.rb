@@ -7,7 +7,8 @@ cask "metrix-bar" do
   desc "A minimal menu bar metrics monitor"
   homepage "https://agili.app"
 
-  depends_on macos: ">= 26.0"
+  # macOS 26+ required; :tahoe is the release symbol for macOS 26.
+  depends_on macos: :tahoe
   auto_updates true
 
   app "Metrix.Bar.app"
