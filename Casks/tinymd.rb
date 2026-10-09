@@ -2,7 +2,7 @@ cask "tinymd" do
   version "0.0.1"
   sha256 "1ec344721642b363d7cc934b4a23808063d03a43c05647f6a0f46f7bc1d7dc3a"
 
-  url "https://downloads.agili.app/tinymd-app/releases/#{version}/10.6ef18d92fcb2693a/TinyMD-#{version}.zip"
+  url "https://downloads.agili.app/tinymd-app/releases/0.0.1/10.6ef18d92fcb2693a/TinyMD-0.0.1.zip"
   name "TinyMD"
   desc "A minimal Markdown editor"
   homepage "https://agili.app"

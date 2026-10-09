@@ -1,0 +1,33 @@
+name: Update casks
+
+on:
+  schedule:
+    # 每日 UTC 00:00（北京 08:00）跑一次，也可手动触发
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync each cask from its product appcast
+        run: |
+          bash scripts/update-cask.sh tinymd     https://downloads.agili.app/tinymd-app/appcast.xml
+          bash scripts/update-cask.sh metrix-bar https://downloads.agili.app/metrix-bar/appcast.xml
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet -- Casks; then
+            echo "no cask changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks
+          git commit -m "chore(casks): bump versions from appcast"
+          git push
