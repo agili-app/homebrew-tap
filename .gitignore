@@ -1,0 +1,13 @@
+# Generated dependencies, private sources, outputs, caches, diagnostics and reports
+.private-source/
+.release-output/
+.release-tools/
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+artifacts/
+reports/
+target/
+GOCACHE/
+.DS_Store
