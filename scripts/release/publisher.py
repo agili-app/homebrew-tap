@@ -26,20 +26,27 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('command', choices=['plan', 'check-stage', 'build', 'publish', 'webhook'])
     parser.add_argument('--product', required=True, choices=PRODUCTS)
-    parser.add_argument('--run-id', default=os.environ.get('GITHUB_RUN_ID'))
+    parser.add_argument('--run-id', default=os.environ.get('RELEASE_RUN_ID') or os.environ.get('GITHUB_RUN_ID'))
     parser.add_argument('--platform')
     parser.add_argument('--arch')
     args = parser.parse_args()
     if not args.run_id:
         parser.error('--run-id is required outside GitHub Actions')
+    if not re.fullmatch(r'[1-9][0-9]*', args.run_id):
+        parser.error('--run-id must be a positive integer string')
+    resume_run = os.environ.get('RELEASE_RESUME_RUN', '')
+    if resume_run and (not re.fullmatch(r'[1-9][0-9]*', resume_run) or resume_run != args.run_id):
+        parser.error('RELEASE_RESUME_RUN must match --run-id as a positive integer string')
     if args.command in {'build', 'check-stage'} and (not args.platform or not args.arch):
         parser.error('--platform and --arch are required for build/check-stage')
     publisher = Publisher(R2(), args.product, os.environ.get('DOWNLOAD_BASE_URL'))
     if args.command == 'plan':
         state, _ = publisher.state()
         record = state['runs'].get(str(args.run_id))
+        if resume_run and record is None:
+            raise ReleaseError('resume run has no reservation for this product')
         if record is not None:
-            if (record['channel'], record.get('requestedVersion', ''), record.get('bump', 'patch'), record.get('sourceRef', 'main')) != (os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), os.environ.get('SOURCE_REF', 'main')):
+            if (record['product'], record['channel'], record.get('requestedVersion', ''), record.get('bump', 'patch'), record.get('sourceRef', 'main')) != (args.product, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), os.environ.get('SOURCE_REF', 'main')):
                 raise ReleaseError('retry inputs differ')
         if record is None:
             repo = PRODUCTS[args.product][0]

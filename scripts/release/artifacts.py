@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 import zipfile
 
-from common import ReleaseError, digest, version, validate_minimum_system_version
+from common import ReleaseError, digest, public_artifact_url, version, validate_minimum_system_version
 
 
 @dataclass
@@ -42,7 +42,7 @@ def prepare_target(product, prefix, base, record, row, bundle):
             if key in files and files[key] != data:
                 raise ReleaseError('duplicate artifact basename')
             files[key] = data
-            return {'name': name, 'url': base + '/' + key.removeprefix(prefix + '/'),
+            return {'name': name, 'url': public_artifact_url(base, key.removeprefix(prefix + '/')),
                     'size': len(data), 'sha256': digest(data), 'key': key}
         for entry in catalog['artifacts']:
             if entry['kind'] not in {'installer', 'update'} or entry['format'] not in {'dmg', 'zip', 'exe', 'tar.gz', 'deb', 'appimage'}:
@@ -99,7 +99,7 @@ def prepare_target(product, prefix, base, record, row, bundle):
                     match = artifact(name)['key']
                 if len(files[match]) != item['size'] or not item.get('signature'):
                     raise ReleaseError('native manifest size/signature mismatch')
-                item['url'] = base + '/' + match.removeprefix(prefix + '/')
+                item['url'] = public_artifact_url(base, match.removeprefix(prefix + '/'))
             rewrite(native)
             if native['url'] not in {a['url'] for a in updates}:
                 raise ReleaseError('native update payload is absent from catalog')

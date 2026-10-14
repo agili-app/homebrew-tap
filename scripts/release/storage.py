@@ -43,6 +43,7 @@ class R2:
         self.client.put_object(**args)
 
     def verify_public(self, url, data):
-        with urllib.request.urlopen(url, timeout=120) as response:
+        request = urllib.request.Request(url, headers={'User-Agent': 'AgiliRelease/1.0'})
+        with urllib.request.urlopen(request, timeout=120) as response:
             if response.status != 200 or digest(response.read()) != digest(data):
                 raise ReleaseError('public artifact verification failed')

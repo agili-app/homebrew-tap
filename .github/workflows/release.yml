@@ -21,6 +21,10 @@ on:
       source_ref:
         type: string
         default: main
+      resume_run:
+        description: Optional run ID to reuse failed signed stage
+        type: string
+        required: false
 
 # The lock includes plan, every native build, mutable feeds, Cask, and webhook.
 concurrency:
@@ -31,6 +35,8 @@ permissions:
   contents: read
 
 env:
+  RELEASE_RUN_ID: ${{ inputs.resume_run || github.run_id }}
+  RELEASE_RESUME_RUN: ${{ inputs.resume_run }}
   R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
   R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
   R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 import sys
+from urllib.parse import quote
 
 from semver import Version
 
@@ -17,6 +18,10 @@ RUNNERS = {'macos': {'macos-latest', 'macos-15', 'macos-15-intel', 'macos-14'},
 
 def encoded(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+
+
+def public_artifact_url(base, relative_path):
+    return base + '/' + quote(relative_path, safe='/')
 
 
 def digest(data):

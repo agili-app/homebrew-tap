@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from email.message import Message
 
 from artifacts import prepare_target
-from common import PRODUCTS, DYNAMIC, IMMUTABLE, ReleaseError, digest, encoded, version, validate_build_seq
+from common import PRODUCTS, DYNAMIC, IMMUTABLE, ReleaseError, digest, encoded, public_artifact_url, version, validate_build_seq
 
 
 class Publisher:
@@ -86,7 +86,7 @@ class Publisher:
         # Reapply metadata to identical objects from interrupted/older publishers.
         self.store.put(key, data, etag=etag, absent=old is None, cache=IMMUTABLE,
                        disposition=header['Content-Disposition'])
-        self.store.verify_public(self.base + '/' + key.removeprefix(self.prefix + '/'), data)
+        self.store.verify_public(public_artifact_url(self.base, key.removeprefix(self.prefix + '/')), data)
 
     def baseline(self, run, platform, arch, directory):
         state, _ = self.state()
