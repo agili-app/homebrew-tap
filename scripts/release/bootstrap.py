@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tarfile
+import tempfile
 import tomllib
 import urllib.request
 import zipfile
@@ -18,7 +19,6 @@ from common import ReleaseError, run_cli
 XCODEGEN_URL = 'https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip'
 XCODEGEN_SHA256 = '4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806'
 MINISIGN = {
-    'macos': ('minisign-0.12-macos.zip', '89000b19535765f9cffc65a65d64a820f433ef6db8020667f7570e06bf6aac63'),
     'linux': ('minisign-0.12-linux.tar.gz', '9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73'),
     'windows': ('minisign-0.12-win64.zip', '37b600344e20c19314b2e82813db2bfdcc408b77b876f7727889dbd46d539479'),
 }
@@ -76,13 +76,31 @@ def windows_fxc():
     fxc = next((p / sdk_arch / 'fxc.exe' for p in candidates if (p / sdk_arch / 'fxc.exe').is_file()), None)
     if fxc is None:
         raise ReleaseError('Windows SDK native fxc.exe not installed for runner host')
-    result = subprocess.run([str(fxc), '/?'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        raise ReleaseError('Windows SDK fxc.exe is not executable on this runner')
+    # FXC help status is not a compiler capability check; compile a real shader.
+    with tempfile.TemporaryDirectory(prefix='agili-fxc-', dir=os.environ['RUNNER_TEMP']) as temporary:
+        source = Path(temporary) / 'smoke.hlsl'
+        output = Path(temporary) / 'smoke.dxbc'
+        source.write_text('float4 main() : SV_Target { return float4(1, 0, 0, 1); }\n', encoding='ascii')
+        result = subprocess.run([str(fxc), '/nologo', '/T', 'ps_5_0', '/E', 'main',
+                                 '/Fo', str(output), str(source)], capture_output=True)
+        if result.returncode != 0 or not output.is_file() or output.stat().st_size == 0:
+            raise ReleaseError(f'Windows SDK native fxc.exe shader compilation failed (exitcode={result.returncode})')
     add_path(fxc.parent)
 
 
 def minisign(native_platform):
+    if native_platform == 'macos':
+        # The official 0.12 macOS zip contains only arm64. Upstream recommends Homebrew.
+        run(['brew', 'install', 'minisign'])
+        directory = Path(subprocess.check_output(['brew', '--prefix', 'minisign'], text=True).strip()) / 'bin'
+        executable = directory / 'minisign'
+        architectures = subprocess.check_output(['lipo', '-archs', str(executable)], text=True).split()
+        native = 'arm64' if host_architecture()[0] == 'arm64' else 'x86_64'
+        if native not in architectures:
+            raise ReleaseError('Homebrew Minisign does not support the native runner host')
+        verify_minisign(executable)
+        add_path(directory)
+        return
     name, checksum = MINISIGN[native_platform]
     data = download('https://github.com/jedisct1/minisign/releases/download/0.12/' + name, checksum)
     directory = Path(os.environ['RUNNER_TEMP']) / 'agili-public-minisign'
@@ -99,10 +117,14 @@ def minisign(native_platform):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             executable.write_bytes(archive.read(member))
     executable.chmod(0o755)
-    result = subprocess.run([str(executable), '-v'], check=True, capture_output=True, text=True)
-    if 'minisign 0.12' not in (result.stdout + result.stderr).lower():
-        raise ReleaseError('official Minisign version mismatch')
+    verify_minisign(executable)
     add_path(directory)
+
+
+def verify_minisign(executable):
+    result = subprocess.run([str(executable), '-v'], check=True, capture_output=True, text=True)
+    if (result.stdout + result.stderr).strip().lower() != 'minisign 0.12':
+        raise ReleaseError('Minisign version mismatch; expected 0.12')
 
 
 def main(native_platform):

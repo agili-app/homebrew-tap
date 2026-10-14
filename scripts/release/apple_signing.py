@@ -11,8 +11,37 @@ import sys
 import tempfile
 
 
+_SECRET_VALUES = set()
+
+
+def redact(text):
+    values = _SECRET_VALUES | {
+        value for name, value in os.environ.items()
+        if value and any(marker in name.upper() for marker in
+                         ('PASSWORD', 'SECRET', 'TOKEN', 'BASE64', 'APPLE_ID', 'ACCESS_KEY'))
+    }
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, '[REDACTED]')
+    return text
+
+
 def quiet(args):
-    subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    result = subprocess.run(args, capture_output=True, text=True, errors='replace')
+    if result.returncode:
+        program = Path(args[0]).name
+        # Only fixed, known subcommands are safe; never render the argv.
+        safe = {'security': {'create-keychain', 'set-keychain-settings', 'unlock-keychain',
+                             'import', 'set-key-partition-list', 'list-keychains', 'delete-keychain'},
+                'xcrun': {'notarytool'}}
+        command = program if program in safe else 'Apple tool'
+        if program in safe and len(args) > 1 and args[1] in safe[program]:
+            command += ' ' + args[1]
+            if args[1] == 'notarytool' and len(args) > 2 and args[2] == 'store-credentials':
+                command += ' store-credentials'
+        print(f'Apple command failed: {command}; exitcode={result.returncode}; stderr={redact(result.stderr).strip()}',
+              file=sys.stderr)
+        raise RuntimeError('Apple command failed')
+    return result.stdout
 
 
 def prepare(product):
@@ -27,10 +56,11 @@ def prepare(product):
     keychain = root / 'release.keychain-db'
     profile = 'agili-release-notary'
     password = secrets.token_urlsafe(32)
+    _SECRET_VALUES.add(password)
     p12 = root / 'certificate.p12'
     p12.write_bytes(base64.b64decode(os.environ['DEVELOPER_ID_P12_BASE64'], validate=True))
     p12.chmod(0o600)
-    search_list = subprocess.check_output(['security', 'list-keychains', '-d', 'user'], text=True)
+    search_list = quiet(['security', 'list-keychains', '-d', 'user'])
     original = [line.strip().strip('"') for line in search_list.splitlines()]
     (root / 'search-list.json').write_text(json.dumps(original))
     quiet(['security', 'create-keychain', '-p', password, str(keychain)])
