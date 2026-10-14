@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ inputs.product == 'tinymd' && matrix.platform == 'macos' && matrix.arch == 'x86_64' && 'macos-15' || matrix.runner }}
     defaults:
       run:
         shell: bash
