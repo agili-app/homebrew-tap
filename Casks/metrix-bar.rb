@@ -1,14 +1,13 @@
 cask "metrix-bar" do
   version "0.0.1"
-  sha256 "ff8fdceb43d347924cc7ee7e832746e37e5e72c2bcad3bd78304bfa50d689dc8"
+  sha256 "fd838487c2b948d0b7cc2d4c1d7e6d581f40f217a8cb9b0948ed5d71d83e1609"
 
-  url "https://downloads.agili.app/metrix-bar/releases/0.0.1/14.3151d1ebaa395f16/Metrix.Bar-0.0.1.zip"
+  url "https://downloads.agili.app/metrix-bar/releases/0.0.1/macos-universal/Metrix.Bar%200.0.1.dmg"
   name "Metrix.Bar"
   desc "A minimal menu bar metrics monitor"
   homepage "https://agili.app"
 
-  # macOS 26+ required; :tahoe is the release symbol for macOS 26.
-  depends_on macos: :tahoe
+  depends_on macos: ">= 12.0"
   auto_updates true
 
   app "Metrix.Bar.app"
