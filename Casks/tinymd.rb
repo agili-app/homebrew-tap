@@ -1,16 +1,13 @@
 cask "tinymd" do
   version "0.0.1"
-  sha256 "dc864967fe71e3fb1606c0944125df6872e9ef71977032c2ee3c4d85b46831d1"
+  sha256 "2143eaa825c7709f1ba0d2906fcf146a6070dd82f58ff3a7687fc667fec5f927"
 
-  url "https://downloads.agili.app/tinymd-app/releases/0.0.1/11.3b26d1ac9eeb1dff/TinyMD-0.0.1.zip"
+  url "https://downloads.agili.app/tinymd-app/releases/0.0.1/macos-universal/TinyMD-0.0.1-macos-universal.dmg"
   name "TinyMD"
   desc "A minimal Markdown editor"
   homepage "https://agili.app"
 
-  # macOS 15.3+ required; Homebrew only models whole releases, so :sequoia (>= 15.0)
-  # is the closest valid floor. The 15.0–15.2 window is narrowed by the app's own
-  # LSMinimumSystemVersion on launch.
-  depends_on macos: :sequoia
+  depends_on macos: ">= 15.3"
   auto_updates true
 
   app "TinyMD.app"
