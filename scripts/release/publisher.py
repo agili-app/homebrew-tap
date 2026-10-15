@@ -41,12 +41,16 @@ def main():
         parser.error('--platform and --arch are required for build/check-stage')
     publisher = Publisher(R2(), args.product, os.environ.get('DOWNLOAD_BASE_URL'))
     if args.command == 'plan':
+        rebuild_input = os.environ.get('RELEASE_REBUILD', 'false')
+        if rebuild_input not in {'true', 'false'}:
+            raise ReleaseError('RELEASE_REBUILD must be true or false')
+        rebuild = rebuild_input == 'true'
         state, _ = publisher.state()
         record = state['runs'].get(str(args.run_id))
         if resume_run and record is None:
             raise ReleaseError('resume run has no reservation for this product')
         if record is not None:
-            if (record['product'], record['channel'], record.get('requestedVersion', ''), record.get('bump', 'patch'), record.get('sourceRef', 'main')) != (args.product, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), os.environ.get('SOURCE_REF', 'main')):
+            if (record['product'], record['channel'], record.get('requestedVersion', ''), record.get('bump', 'patch'), record.get('sourceRef', 'main'), record.get('rebuild', False)) != (args.product, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), os.environ.get('SOURCE_REF', 'main'), rebuild):
                 raise ReleaseError('retry inputs differ')
         if record is None:
             repo = PRODUCTS[args.product][0]
@@ -55,7 +59,7 @@ def main():
                 raise ReleaseError('source commit must be full SHA')
             doc = github(repo + '/contents/scripts/release/platforms.json?ref=' + sha)
             matrix = targets(json.loads(base64.b64decode(doc['content'])))
-            record = publisher.reserve(args.run_id, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), sha, matrix, os.environ.get('SOURCE_REF', 'main'))
+            record = publisher.reserve(args.run_id, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), sha, matrix, os.environ.get('SOURCE_REF', 'main'), rebuild)
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write('sha=' + record['sourceSha'] + '\nrepo=' + PRODUCTS[args.product][0] + '\nmatrix=' + json.dumps({'include': record['matrix']}) + '\n')
     elif args.command == 'check-stage':

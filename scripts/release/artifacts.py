@@ -38,7 +38,7 @@ def prepare_target(product, prefix, base, record, row, bundle):
                 raise ReleaseError('unsafe catalog path')
             data = archive.read(path)
             name = Path(path).name
-            key = f'{prefix}/releases/{record["updateVersion"]}/{row["platform"]}-{row["arch"]}/{name}'
+            key = f'{prefix}/releases/{record.get("artifactPath", record["updateVersion"])}/{row["platform"]}-{row["arch"]}/{name}'
             if key in files and files[key] != data:
                 raise ReleaseError('duplicate artifact basename')
             files[key] = data

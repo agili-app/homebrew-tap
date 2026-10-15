@@ -18,6 +18,10 @@ on:
         type: choice
         options: [preview, stable]
         default: preview
+      rebuild:
+        description: Same stable version with a fresh immutable build; stable only
+        type: boolean
+        default: false
       source_ref:
         type: string
         default: main
@@ -69,6 +73,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           VERSION: ${{ inputs.version }}
           BUMP: ${{ inputs.bump }}
+          RELEASE_REBUILD: ${{ inputs.rebuild && 'true' || 'false' }}
           PRODUCT: ${{ inputs.product }}
         run: python scripts/release/publisher.py plan --product "$PRODUCT"
 

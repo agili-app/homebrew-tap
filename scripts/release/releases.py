@@ -29,12 +29,16 @@ class Publisher:
         state, _ = self.state()
         return state['runs'][str(run)]
 
-    def reserve(self, run, channel, requested, bump, sha, matrix, source_ref='main'):
+    def reserve(self, run, channel, requested, bump, sha, matrix, source_ref='main', rebuild=False):
+        if not isinstance(rebuild, bool):
+            raise ReleaseError('rebuild must be a boolean')
+        if rebuild and channel != 'stable':
+            raise ReleaseError('rebuild requires stable channel')
         state, etag = self.state()
         run = str(run)
         if run in state['runs']:
             existing = state['runs'][run]
-            if (existing['product'], existing['channel'], existing['sourceSha'], existing['matrix'], existing.get('requestedVersion', ''), existing.get('bump', 'patch'), existing.get('sourceRef', 'main')) != (self.product, channel, sha, matrix, requested, bump, source_ref):
+            if (existing['product'], existing['channel'], existing['sourceSha'], existing['matrix'], existing.get('requestedVersion', ''), existing.get('bump', 'patch'), existing.get('sourceRef', 'main'), existing.get('rebuild', False)) != (self.product, channel, sha, matrix, requested, bump, source_ref, rebuild):
                 raise ReleaseError('retry reservation parameters differ')
             return existing
         highest = max([r['displayVersion'] for r in state['runs'].values()] or ['0.0.0'], key=version)
@@ -44,7 +48,12 @@ class Publisher:
         if version(base).prerelease is not None:
             raise ReleaseError('display version must be X.Y.Z')
         frozen = [r['displayVersion'] for r in state['runs'].values() if r['channel'] == 'stable']
-        if frozen and version(base) <= max(map(version, frozen)):
+        if rebuild:
+            published = [r for r in state['runs'].values() if r['channel'] == 'stable' and r['status'] == 'published']
+            published += [r for r in state['history'] if r['channel'] == 'stable']
+            if not requested or not published or version(base) != max(version(r['displayVersion']) for r in published):
+                raise ReleaseError('rebuild requires the current published stable version explicitly')
+        elif frozen and version(base) <= max(map(version, frozen)):
             raise ReleaseError('stable version is frozen; duplicate/downgrade rejected')
         if channel == 'stable':
             update = base
@@ -57,8 +66,10 @@ class Publisher:
         record = {'runId': run, 'product': self.product, 'channel': channel,
                   'sourceSha': sha, 'sourceRef': source_ref, 'displayVersion': base, 'updateVersion': update,
                   'buildSeq': state['seq'], 'matrix': matrix, 'status': 'reserved',
-                  'requestedVersion': requested, 'bump': bump,
+                  'requestedVersion': requested, 'bump': bump, 'rebuild': rebuild,
                   'publishedAt': datetime.now(timezone.utc).isoformat()}
+        if rebuild:
+            record['artifactPath'] = f'{update}/build-{record["buildSeq"]}'
         state['runs'][run] = record
         self.save(state, etag)
         return record
@@ -178,11 +189,17 @@ class Publisher:
         if channels is None:
             channels = [record['channel']]
             preview = highwaters.get('preview')
-            if record['channel'] == 'stable' and (preview is None or version(record['updateVersion']) > version(preview['updateVersion'])):
+            if record['channel'] == 'stable' and (preview is None or (
+                    record['buildSeq'] > preview['buildSeq'] and (
+                        version(record['updateVersion']) > version(preview['updateVersion']) or (
+                            record.get('rebuild', False) and record['updateVersion'] == preview['updateVersion'])))):
                 channels.append('preview')
         for channel in channels:
             watermark = highwaters.get(channel)
-            if watermark and watermark['runId'] != str(run) and (watermark['buildSeq'] >= record['buildSeq'] or version(watermark['updateVersion']) >= version(record['updateVersion'])):
+            if watermark and watermark['runId'] != str(run) and (
+                    version(record['updateVersion']) < version(watermark['updateVersion']) or (
+                        version(record['updateVersion']) == version(watermark['updateVersion']) and (
+                            not record.get('rebuild', False) or record['buildSeq'] <= watermark['buildSeq']))):
                 raise ReleaseError('superseded reservation cannot advance mutable release metadata')
         record['publishingChannels'] = channels
         progress = record.setdefault('mutableObjects', {})
