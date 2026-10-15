@@ -60,6 +60,7 @@ def main():
             doc = github(repo + '/contents/scripts/release/platforms.json?ref=' + sha)
             matrix = targets(json.loads(base64.b64decode(doc['content'])))
             record = publisher.reserve(args.run_id, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), sha, matrix, os.environ.get('SOURCE_REF', 'main'), rebuild)
+        publisher.prune_stages(args.run_id)
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write('sha=' + record['sourceSha'] + '\nrepo=' + PRODUCTS[args.product][0] + '\nmatrix=' + json.dumps({'include': record['matrix']}) + '\n')
     elif args.command == 'check-stage':

@@ -1,7 +1,7 @@
 """Reservation, baseline selection and resumable release publication."""
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.message import Message
 
 from artifacts import prepare_target
@@ -16,13 +16,39 @@ class Publisher:
         self.base = (base or f'https://downloads.agili.app/{self.prefix}').rstrip('/')
         if not self.base.startswith('https://'):
             raise ReleaseError('public download base must be HTTPS')
+        public_artifact_url(self.base, '', self.prefix)
         self.control = f'{self.prefix}/control.json'
 
     def state(self):
         data, etag = self.store.get(self.control, True)
-        return (json.loads(data) if data else {'seq': 0, 'runs': {}, 'previews': {}, 'history': []}), etag
+        state = json.loads(data) if data else {'seq': 0, 'runs': {}, 'history': []}
+        self.watermarks(state)
+        return state, etag
+
+    def watermarks(self, state):
+        if max(state.get('previews', {}).values(), default=0) > state['seq']:
+            raise ReleaseError('legacy preview counter exceeds buildSeq')
+        records = list(state['runs'].values()) + state['history']
+        def maximum(field, values):
+            state[field] = max([state.get(field, '0.0.0')] + values, key=version)
+        maximum('highestDisplayVersion', [r['displayVersion'] for r in records])
+        maximum('highestStableVersion', [r['displayVersion'] for r in records if r['channel'] == 'stable'])
+        published = [r['displayVersion'] for r in state['runs'].values()
+                     if r['channel'] == 'stable' and r['status'] == 'published']
+        published += [r['displayVersion'] for r in state['history'] if r['channel'] == 'stable']
+        stable = state.get('channels', {}).get('stable')
+        maximum('publishedStableVersion', published)
+        # Channel ownership is reserved before publication completes: freeze it, but do not mark it published.
+        frozen = [str(version(stable['updateVersion']))] if stable else []
+        maximum('highestStableVersion', [state['publishedStableVersion']] + frozen)
+        maximum('highestDisplayVersion', [state['highestStableVersion']])
+        state['lastRunId'] = max([int(state.get('lastRunId', 0))] + [int(run) for run in state['runs']])
+        state.pop('previews', None)
 
     def save(self, state, etag):
+        self.watermarks(state)
+        state['runs'] = dict(sorted(state['runs'].items(), key=lambda item: item[1]['buildSeq'], reverse=True)[:3])
+        state['history'] = sorted(state['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-3:]
         self.store.put(self.control, encoded(state), True, etag=etag, absent=etag is None)
 
     def reservation(self, run):
@@ -41,31 +67,28 @@ class Publisher:
             if (existing['product'], existing['channel'], existing['sourceSha'], existing['matrix'], existing.get('requestedVersion', ''), existing.get('bump', 'patch'), existing.get('sourceRef', 'main'), existing.get('rebuild', False)) != (self.product, channel, sha, matrix, requested, bump, source_ref, rebuild):
                 raise ReleaseError('retry reservation parameters differ')
             return existing
-        highest = max([r['displayVersion'] for r in state['runs'].values()] or ['0.0.0'], key=version)
+        if not re.fullmatch(r'[1-9][0-9]*', run):
+            raise ReleaseError('runId must be a positive integer')
+        if int(run) <= state['lastRunId']:
+            raise ReleaseError('outside retained reservation window')
+        highest = state['highestDisplayVersion']
         base = requested
         if not base:
             base = str(getattr(version(highest), 'bump_' + bump)())
         if version(base).prerelease is not None:
             raise ReleaseError('display version must be X.Y.Z')
-        frozen = [r['displayVersion'] for r in state['runs'].values() if r['channel'] == 'stable']
+        frozen = state['highestStableVersion']
         if rebuild:
-            published = [r for r in state['runs'].values() if r['channel'] == 'stable' and r['status'] == 'published']
-            published += [r for r in state['history'] if r['channel'] == 'stable']
-            if not requested or not published or version(base) != max(version(r['displayVersion']) for r in published):
+            if not requested or state['publishedStableVersion'] == '0.0.0' or version(base) != version(state['publishedStableVersion']):
                 raise ReleaseError('rebuild requires the current published stable version explicitly')
-        elif frozen and version(base) <= max(map(version, frozen)):
+        elif version(base) <= version(frozen):
             raise ReleaseError('stable version is frozen; duplicate/downgrade rejected')
-        if channel == 'stable':
-            update = base
-        else:
-            number = state['previews'].get(base, 0) + 1
-            state['previews'][base] = number
-            update = f'{base}-preview.{number}'
         state['seq'] += 1
         validate_build_seq(state['seq'])
+        update = base if channel == 'stable' else f'{base}-preview.{state["seq"]}'
         record = {'runId': run, 'product': self.product, 'channel': channel,
                   'sourceSha': sha, 'sourceRef': source_ref, 'displayVersion': base, 'updateVersion': update,
-                  'buildSeq': state['seq'], 'matrix': matrix, 'status': 'reserved',
+                  'buildSeq': state['seq'], 'artifactPrefix': f'{channel}/{self.prefix}/releases', 'matrix': matrix, 'status': 'reserved',
                   'requestedVersion': requested, 'bump': bump, 'rebuild': rebuild,
                   'publishedAt': datetime.now(timezone.utc).isoformat()}
         if rebuild:
@@ -73,6 +96,15 @@ class Publisher:
         state['runs'][run] = record
         self.save(state, etag)
         return record
+
+    def prune_stages(self, run):
+        state, _ = self.state()
+        published = [key for key, record in state['runs'].items() if record['status'] == 'published']
+        self.store.prune_stages(f'{self.prefix}/runs/', str(run), published,
+                                datetime.now(timezone.utc) - timedelta(days=14))
+
+    def cleanup_run(self, run):
+        self.store.delete_prefix(f'{self.prefix}/runs/{run}/')
 
     def stage_key(self, run, platform, arch):
         return f'{self.prefix}/runs/{run}/{platform}-{arch}.zip'
@@ -97,7 +129,7 @@ class Publisher:
         # Reapply metadata to identical objects from interrupted/older publishers.
         self.store.put(key, data, etag=etag, absent=old is None, cache=IMMUTABLE,
                        disposition=header['Content-Disposition'])
-        self.store.verify_public(public_artifact_url(self.base, key.removeprefix(self.prefix + '/')), data)
+        self.store.verify_public(public_artifact_url(self.base, key, self.prefix), data)
 
     def baseline(self, run, platform, arch, directory):
         state, _ = self.state()
@@ -112,16 +144,18 @@ class Publisher:
                 format = item['format']
                 if (item['platform'], item['arch']) != (platform, arch) or counts.get(format, 0) >= 3:
                     continue
-                counts[format] = counts.get(format, 0) + 1
                 data, _ = self.store.get(item['key'])
+                if data is None and record['channel'] == 'preview':
+                    continue
                 if data is None or digest(data) != item['sha256']:
                     raise ReleaseError('baseline missing or digest mismatch')
                 path = directory / (previous['updateVersion'] + '-' + item['name'])
-                path.write_bytes(data)
                 baseline = {**{k: item[k] for k in ('platform', 'arch', 'format', 'sha256', 'url')},
                             'updateVersion': previous['updateVersion'], 'path': str(path.resolve())}
                 if item.get('signatureKey'):
                     signature, _ = self.store.get(item['signatureKey'])
+                    if signature is None and record['channel'] == 'preview':
+                        continue
                     if signature is None or digest(signature) != item['signatureSha256']:
                         raise ReleaseError('baseline signature missing or digest mismatch')
                     signature_path = directory / (path.name + '.minisig')
@@ -129,6 +163,8 @@ class Publisher:
                     baseline['signaturePath'] = str(signature_path.resolve())
                 if item.get('nativeManifest'):
                     baseline['nativeManifest'] = item['nativeManifest']
+                path.write_bytes(data)
+                counts[format] = counts.get(format, 0) + 1
                 result.append(baseline)
         return result
 
@@ -140,6 +176,8 @@ class Publisher:
         row = next((row for row in record['matrix'] if (row['platform'], row['arch']) == (platform, arch)), None)
         if row is None:
             raise ReleaseError('target does not match reservation')
+        if record['status'] == 'published':
+            return False
         bundle, _ = self.store.get(self.stage_key(run, platform, arch), True)
         if bundle is None:
             return True
@@ -150,6 +188,7 @@ class Publisher:
         state, etag = self.state()
         record = state['runs'][str(run)]
         if record['status'] == 'published':
+            self.cleanup_run(run)
             return record['releaseInfo']
         public_data, _ = self.store.get(f'{self.prefix}/release-info.json')
         public_info = json.loads(public_data) if public_data else None
@@ -239,10 +278,11 @@ class Publisher:
                     mutable(f'{self.prefix}/feeds/{channel}/update-{target}.json', item.native)
             info['channels'][channel] = release
         info['history'] = [h for h in info.get('history', []) if h['updateVersion'] != release['updateVersion']] + [release]
-        info['history'] = sorted(info['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-30:]
+        info['history'] = sorted(info['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-3:]
         mutable(f'{self.prefix}/release-info.json', info)
         record.update(status='published', releaseInfo=release)
         state['history'] = [h for h in state['history'] if h['updateVersion'] != release['updateVersion']] + [{**release, 'updates': updates}]
-        state['history'] = sorted(state['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-30:]
+        state['history'] = sorted(state['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-3:]
         self.save(state, etag)
+        self.cleanup_run(run)
         return release

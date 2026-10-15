@@ -20,7 +20,15 @@ def encoded(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
 
 
-def public_artifact_url(base, relative_path):
+def public_artifact_url(base, relative_path, product_prefix=None):
+    """Resolve an object key with a product-root base; two-argument calls stay relative."""
+    if product_prefix is not None:
+        if base.rsplit('/', 1)[-1] != product_prefix:
+            raise ReleaseError('public download base must end with product prefix')
+        if relative_path.startswith(('stable/' + product_prefix + '/', 'preview/' + product_prefix + '/')):
+            base = base.rsplit('/', 1)[0]
+        else:
+            relative_path = relative_path.removeprefix(product_prefix + '/')
     return base + '/' + quote(relative_path, safe='/')
 
 

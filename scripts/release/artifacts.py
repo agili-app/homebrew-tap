@@ -38,11 +38,11 @@ def prepare_target(product, prefix, base, record, row, bundle):
                 raise ReleaseError('unsafe catalog path')
             data = archive.read(path)
             name = Path(path).name
-            key = f'{prefix}/releases/{record.get("artifactPath", record["updateVersion"])}/{row["platform"]}-{row["arch"]}/{name}'
+            key = f'{record.get("artifactPrefix", prefix + "/releases")}/{record.get("artifactPath", record["updateVersion"])}/{row["platform"]}-{row["arch"]}/{name}'
             if key in files and files[key] != data:
                 raise ReleaseError('duplicate artifact basename')
             files[key] = data
-            return {'name': name, 'url': public_artifact_url(base, key.removeprefix(prefix + '/')),
+            return {'name': name, 'url': public_artifact_url(base, key, prefix),
                     'size': len(data), 'sha256': digest(data), 'key': key}
         for entry in catalog['artifacts']:
             if entry['kind'] not in {'installer', 'update'} or entry['format'] not in {'dmg', 'zip', 'exe', 'tar.gz', 'deb', 'appimage'}:
@@ -99,12 +99,17 @@ def prepare_target(product, prefix, base, record, row, bundle):
                     match = artifact(name)['key']
                 if len(files[match]) != item['size'] or not item.get('signature'):
                     raise ReleaseError('native manifest size/signature mismatch')
-                item['url'] = public_artifact_url(base, match.removeprefix(prefix + '/'))
+                item['url'] = public_artifact_url(base, match, prefix)
             rewrite(native)
             if native['url'] not in {a['url'] for a in updates}:
                 raise ReleaseError('native update payload is absent from catalog')
             for previous in native.get('previous', []):
-                if not previous['url'].startswith(base + '/releases/'):
+                allowed = [base + '/releases/'] + [
+                    public_artifact_url(base, channel + '/' + prefix + '/releases/', prefix)
+                    for channel in ('stable', 'preview')]
+                path = unquote(urlparse(previous['url']).path)
+                if (not any(previous['url'].startswith(root) for root in allowed)
+                        or '..' in path.split('/') or '\\' in path):
                     raise ReleaseError('native previous archive must reference public immutable release')
             for delta in native.get('deltas', []):
                 if version(delta['from']) >= version(record['updateVersion']):

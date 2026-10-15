@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate one Cask from current stable metadata on the latest main branch."""
+"""Regenerate a product's Casks from current stable metadata on the latest main branch."""
 import argparse
 import json
 from pathlib import Path
@@ -36,15 +36,26 @@ def macos_requirement(minimum):
     return requirement
 
 
+def cask_paths(product):
+    tokens = ('tinymd', 'tinymd-app', 'tinymd-cli') if product == 'tinymd' else (product,)
+    return [f'Casks/{token}.rb' for token in tokens]
+
+
 def update_cask(checkout, product, release):
     mac = [a for a in release['downloads'] if a['platform'] == 'macos' and a['format'] in {'dmg', 'zip'} and a.get('role', 'gui') == 'gui']
     universal = [a for a in mac if a['arch'] == 'universal']
-    chosen = universal[:1] or [next(a for a in mac if a['arch'] == arch) for arch in ('arm64', 'x86_64') if any(a['arch'] == arch for a in mac)]
+    native = [next(a for a in mac if a['arch'] == arch) for arch in ('arm64', 'x86_64') if any(a['arch'] == arch for a in mac)]
+    chosen = native if len(native) == 2 else universal[:1] or native
     if not chosen:
         raise ReleaseError('stable release has no macOS Cask installer')
     minimums = [a.get('minimumSystemVersion') for a in chosen]
     minimum = max(minimums, key=validate_minimum_system_version)
-    path = checkout / 'Casks' / (product + '.rb')
+    for filename in cask_paths(product):
+        render_cask(checkout / filename, product, release, chosen, minimum)
+
+
+def render_cask(path, product, release, chosen, minimum):
+    universal = chosen[0]['arch'] == 'universal'
     text = path.read_text()
     text = re.sub(r'^  version ".*"', f'  version "{release["displayVersion"]}"', text, flags=re.M)
     homepage = {'tinymd': 'https://tinymd.app', 'metrix-bar': 'https://metrix.bar'}[product]
@@ -58,15 +69,15 @@ def update_cask(checkout, product, release):
         replacement = '\n' + '\n'.join(f'  on_{"arm" if a["arch"] == "arm64" else "intel"} do\n    sha256 "{a["sha256"]}"\n    url "{a["url"]}"\n  end' for a in chosen) + '\n'
     text = text[:start] + replacement + text[end:]
     text = re.sub(r'^  depends_on arch: .*\n', '', text, flags=re.M)
-    if not universal and len(chosen) == 1:
-        text = text.replace('  auto_updates true', f'  depends_on arch: :{chosen[0]["arch"]}\n  auto_updates true')
     text = re.sub(r'^  # macOS .*?required;.*?\n(?=  depends_on macos:)', '', text, flags=re.M | re.S)
     text = re.sub(r'^  # macOS .*?LSMinimumSystemVersion on launch\.\n', '', text, flags=re.M | re.S)
     requirement = macos_requirement(minimum)
     if re.search(r'^  depends_on macos:', text, flags=re.M):
         text = re.sub(r'^  depends_on macos:.*', requirement, text, flags=re.M)
     else:
-        text = text.replace('  auto_updates true', requirement + '\n  auto_updates true')
+        text = text.replace('  homepage "' + homepage + '"', '  homepage "' + homepage + '"\n\n' + requirement)
+    if not universal and len(chosen) == 1:
+        text = re.sub(r'^(  depends_on macos:.*)$', rf'\1\n  depends_on arch: :{chosen[0]["arch"]}', text, flags=re.M)
     path.write_text(text)
 
 
@@ -96,10 +107,10 @@ def sync(product, stable_reader, remote='origin', branch='main', attempts=3):
             if stable is None:
                 raise ReleaseError('stable metadata missing')
             update_cask(checkout, product, stable)
-            filename = f'Casks/{product}.rb'
-            if git(checkout, 'diff', '--quiet', '--', filename, check=False).returncode == 0:
+            filenames = cask_paths(product)
+            if git(checkout, 'diff', '--quiet', '--', *filenames, check=False).returncode == 0:
                 return 'unchanged'
-            git(checkout, 'add', filename)
+            git(checkout, 'add', *filenames)
             git(checkout, 'commit', '-m', f'chore(casks): sync stable {product} release')
             if git(checkout, 'push', 'origin', f'HEAD:refs/heads/{branch}', check=False).returncode == 0:
                 return 'updated'
