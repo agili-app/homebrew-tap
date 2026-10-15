@@ -18,7 +18,7 @@
 - 入口是 `.github/workflows/release.yml` 的手动 `workflow_dispatch`；未经明确发版要求，不触发它，也不直接运行 publisher、builder、bootstrap 或 sync_cask 来做验证。
 - `publisher.py plan` 会预留版本并写 R2 状态，并非 dry-run；build 上传 stage，publish 推进公开索引，webhook 触发站点重建，`sync_cask.py` 会改 Cask。
 - 保留按 product 串行且 `cancel-in-progress: false` 的锁；源码锁定完整 SHA；禁止 rerun 或复用 reservation，失败后必须新建 `workflow_dispatch` 发布任务。
-- stable 与 preview 独立推进，可显式使用相同基础版本；stable 不更新 preview。失败的 stable 版本可在新任务中同版发布，使用新 buildSeq 与不可变路径；已成功的 stable 同版发布必须显式启用 rebuild。
+- stable 发布也推进 preview feed，直接复用 `stable/` 路径的正式包、签名与 delta；已有更高版本或 buildSeq 的 preview 不回退，也不阻塞 stable 发布。preview 单独发布只推进 preview，可显式使用与 stable 相同的基础版本。失败的 stable 版本可在新任务中同版发布，使用新 buildSeq 与不可变路径；已成功的 stable 同版发布必须显式启用 rebuild。
 - 私有 stage 仅用于同次运行跨 job 交接，不复用签名包；cleanup job 在成功或失败后删除当前 run 的私有包和诊断。后续新任务的 plan 删除同产品其他旧 run 的残留 stage；不删除 control 或其他产品数据。
 - 源码仓库负责原生打包、签名与 `artifacts.json`；本仓库负责版本预留、上传、feed、Cask 与重建通知。不要给某一产品另造平行发布链。
 - TinyMD 正式版同步同时更新 `tinymd`、`tinymd-app` 与 `tinymd-cli`；前两个安装同一 App 并互斥，CLI 复用签名 DMG 中的 `TinyMD.app/Contents/Helpers/tinymd`，可与 App 共存。

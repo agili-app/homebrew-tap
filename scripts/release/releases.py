@@ -170,7 +170,7 @@ class Publisher:
             return False
         if version(record['updateVersion']) >= version(current['updateVersion']):
             return True
-        # Older publishers also put stable releases in preview; permit only that base's migration.
+        # An explicit same-base preview may follow the stable package shared into its feed.
         return (record['channel'] == 'preview'
                 and record.get('requestedVersion') == record['displayVersion']
                 and version(current['updateVersion']).prerelease is None
@@ -195,6 +195,10 @@ class Publisher:
         if not all(self.can_advance(record, current) for current in (
                 info['channels'].get(channel), highwaters.get(channel))):
             raise ReleaseError('superseded reservation cannot advance mutable release metadata')
+        channels = [channel]
+        if channel == 'stable' and all(self.can_advance(record, current) for current in (
+                info['channels'].get('preview'), highwaters.get('preview'))):
+            channels.append('preview')
         prepared = []
         for row in record['matrix']:
             bundle, _ = self.store.get(self.stage_key(run, row['platform'], row['arch']), True)
@@ -213,20 +217,26 @@ class Publisher:
         updates = [a for _, item in prepared for a in item.updates]
         release = {k: record[k] for k in ('displayVersion', 'updateVersion', 'channel', 'buildSeq', 'publishedAt')}
         release.update(notes=record.get('notes', ''), downloads=downloads)
-        highwaters[channel] = {'runId': str(run), 'updateVersion': record['updateVersion'], 'buildSeq': record['buildSeq']}
-        # Freeze the channel before the first mutable PUT, even if a later PUT fails.
+        for channel in channels:
+            highwaters[channel] = {'runId': str(run), 'updateVersion': record['updateVersion'], 'buildSeq': record['buildSeq']}
+        # Freeze all selected channels before the first mutable PUT, even if a later PUT fails.
         self.save(state, etag)
         state, etag = self.state()
         record = state['runs'][str(run)]
         if self.product == 'tinymd':
             feed = {'schema_version': 1, 'version': record['updateVersion'], 'notes': release['notes'],
                     'assets': [a for _, item in prepared for a in item.assets]}
-            self.store.put(f'{self.prefix}/feeds/{channel}/latest.json', encoded(feed), cache=DYNAMIC)
+            payload = encoded(feed)
+            for channel in channels:
+                self.store.put(f'{self.prefix}/feeds/{channel}/latest.json', payload, cache=DYNAMIC)
         else:
             for row, item in prepared:
                 target = {'macos': 'darwin', 'windows': 'windows', 'linux': 'linux'}[row['platform']] + '-' + {'x86_64': 'amd64', 'arm64': 'arm64', 'universal': 'universal'}[row['arch']]
-                self.store.put(f'{self.prefix}/feeds/{channel}/update-{target}.json', encoded(item.native), cache=DYNAMIC)
-        info['channels'][channel] = release
+                payload = encoded(item.native)
+                for channel in channels:
+                    self.store.put(f'{self.prefix}/feeds/{channel}/update-{target}.json', payload, cache=DYNAMIC)
+        for channel in channels:
+            info['channels'][channel] = release
         info['history'] = [h for h in info.get('history', []) if h['updateVersion'] != release['updateVersion']] + [release]
         info['history'] = sorted(info['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-3:]
         self.store.put(f'{self.prefix}/release-info.json', encoded(info), cache=DYNAMIC)
