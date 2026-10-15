@@ -5,7 +5,7 @@ cask "tinymd" do
   url "https://downloads.agili.app/tinymd-app/releases/0.0.1/build-7/macos-universal/TinyMD-0.0.1-macos-universal.dmg"
   name "TinyMD"
   desc "A minimal Markdown editor"
-  homepage "https://agili.app"
+  homepage "https://tinymd.app"
 
   # macOS 15.3 required; Homebrew allows 15.0+, but macOS <15.3 is rejected by LSMinimumSystemVersion on launch.
   depends_on macos: :sequoia

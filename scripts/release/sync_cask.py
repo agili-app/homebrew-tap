@@ -47,6 +47,8 @@ def update_cask(checkout, product, release):
     path = checkout / 'Casks' / (product + '.rb')
     text = path.read_text()
     text = re.sub(r'^  version ".*"', f'  version "{release["displayVersion"]}"', text, flags=re.M)
+    homepage = {'tinymd': 'https://tinymd.app', 'metrix-bar': 'https://metrix.bar'}[product]
+    text = re.sub(r'^  homepage ".*"', f'  homepage "{homepage}"', text, flags=re.M)
     start = text.index('\n', text.index('  version ')) + 1
     end = text.index('  name ', start)
     if universal:
@@ -80,8 +82,8 @@ def sync(product, stable_reader, remote='origin', branch='main', attempts=3):
         checkout = Path(temporary)
         git(checkout, 'init')
         git(checkout, 'remote', 'add', 'origin', remote_url)
-        # Forward checkout action's ephemeral auth without embedding it in URLs.
-        auth = git(Path.cwd(), 'config', '--get-regexp', r'^http\..*\.extraheader$', check=False)
+        # Resolve checkout's includeIf credentials before forwarding to the isolated checkout.
+        auth = git(Path.cwd(), 'config', '--includes', '--get-regexp', r'^http\..*\.extraheader$', check=False)
         for line in auth.stdout.splitlines():
             key, value = line.split(' ', 1)
             git(checkout, 'config', key, value)
