@@ -7,7 +7,7 @@ cask "metrix-bar" do
   desc "A minimal menu bar metrics monitor"
   homepage "https://agili.app"
 
-  depends_on macos: ">= 12.0"
+  depends_on macos: :monterey
   auto_updates true
 
   app "Metrix.Bar.app"

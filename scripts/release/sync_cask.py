@@ -11,6 +11,31 @@ from common import PRODUCTS, ReleaseError, run_cli, validate_minimum_system_vers
 from storage import R2
 
 
+# Homebrew's MacOSVersion::SYMBOLS; publishing runs on Linux without Homebrew.
+MACOS_RELEASES = {
+    11: 'big_sur',
+    12: 'monterey',
+    13: 'ventura',
+    14: 'sonoma',
+    15: 'sequoia',
+    26: 'tahoe',
+    27: 'golden_gate',
+}
+
+
+def macos_requirement(minimum):
+    version = validate_minimum_system_version(minimum)
+    major = version[0]
+    symbol = MACOS_RELEASES.get(major)
+    if symbol is None:
+        raise ReleaseError(f'unsupported Homebrew macOS minimum {minimum}; update MACOS_RELEASES from Homebrew MacOSVersion::SYMBOLS')
+    requirement = f'  depends_on macos: :{symbol}'
+    if any(version[1:]):
+        requirement = (f'  # macOS {minimum} required; Homebrew allows {major}.0+, but macOS <{minimum} is rejected by LSMinimumSystemVersion on launch.\n'
+                       + requirement)
+    return requirement
+
+
 def update_cask(checkout, product, release):
     mac = [a for a in release['downloads'] if a['platform'] == 'macos' and a['format'] in {'dmg', 'zip'} and a.get('role', 'gui') == 'gui']
     universal = [a for a in mac if a['arch'] == 'universal']
@@ -35,7 +60,7 @@ def update_cask(checkout, product, release):
         text = text.replace('  auto_updates true', f'  depends_on arch: :{chosen[0]["arch"]}\n  auto_updates true')
     text = re.sub(r'^  # macOS .*?required;.*?\n(?=  depends_on macos:)', '', text, flags=re.M | re.S)
     text = re.sub(r'^  # macOS .*?LSMinimumSystemVersion on launch\.\n', '', text, flags=re.M | re.S)
-    requirement = f'  depends_on macos: ">= {minimum}"'
+    requirement = macos_requirement(minimum)
     if re.search(r'^  depends_on macos:', text, flags=re.M):
         text = re.sub(r'^  depends_on macos:.*', requirement, text, flags=re.M)
     else:
