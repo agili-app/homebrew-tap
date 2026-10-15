@@ -152,6 +152,11 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
         run: python scripts/release/bootstrap.py "$PLATFORM"
+      - name: Select Xcode for original app icons
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        if: steps.stage.outputs.needs-build == 'true' && matrix.platform == 'macos'
+        with:
+          xcode-version: '26.3'
       - name: Import ephemeral Apple credentials
         id: apple
         if: steps.stage.outputs.needs-build == 'true' && matrix.platform == 'macos'
