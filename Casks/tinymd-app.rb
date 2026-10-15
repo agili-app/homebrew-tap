@@ -1,8 +1,14 @@
 cask "tinymd-app" do
   version "0.0.1"
-  sha256 "d94a5ab8cd2fecb09a6bc8d5b7982c53d0b9cb72cf4e4a04bbf1a1801659d012"
 
-  url "https://downloads.agili.app/tinymd-app/releases/0.0.1/build-7/macos-universal/TinyMD-0.0.1-macos-universal.dmg"
+  on_arm do
+    sha256 "13128ea5eed031ffe7f9a585ba3c106d66af1406286370c8135d83fcbb552cc9"
+    url "https://downloads.agili.app/stable/tinymd-app/releases/0.0.1/build-8/macos-arm64/TinyMD-0.0.1-macos-arm64.dmg"
+  end
+  on_intel do
+    sha256 "3f020b386fb5163519c971fc4ee402468068c99c68c51be7c51de54705b6e9f2"
+    url "https://downloads.agili.app/stable/tinymd-app/releases/0.0.1/build-8/macos-x86_64/TinyMD-0.0.1-macos-x86_64.dmg"
+  end
   name "TinyMD"
   desc "A minimal Markdown editor"
   homepage "https://tinymd.app"
