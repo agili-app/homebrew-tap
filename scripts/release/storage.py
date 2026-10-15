@@ -61,9 +61,8 @@ class R2:
             if response.get('Errors'):
                 raise ReleaseError('private stage deletion failed')
 
-    def prune_stages(self, prefix, current_run, published_runs, cutoff):
+    def prune_stages(self, prefix, current_run):
         self._stage_prefix(prefix)
-        published_runs = {str(run) for run in published_runs}
         for page in self.client.get_paginator('list_objects_v2').paginate(Bucket=self.private, Prefix=prefix):
             keys = []
             for obj in page.get('Contents', []):
@@ -73,8 +72,7 @@ class R2:
                 match = re.fullmatch(r'([1-9][0-9]*)/.+', key[len(prefix):])
                 if not match or match[1] == str(current_run):
                     continue
-                if match[1] in published_runs or obj['LastModified'] < cutoff:
-                    keys.append(key)
+                keys.append(key)
             self._delete_keys(keys)
 
     def delete_prefix(self, prefix):

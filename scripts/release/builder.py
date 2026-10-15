@@ -1,4 +1,4 @@
-"""Build private native sources, redact diagnostics and retain signed stages."""
+"""Build private native sources, redact diagnostics and stage signed packages for this run."""
 import json
 import os
 from pathlib import Path
@@ -11,10 +11,11 @@ from common import ReleaseError
 
 
 def build_release(publisher, run, platform, arch):
-    if not publisher.needs_build(run, platform, arch):
-        print('Reusing private signed build bundle for this run.')
-        return
     record = publisher.reservation(run)
+    if record['status'] != 'reserved':
+        raise ReleaseError('build requires a fresh reserved run')
+    if not any((row['platform'], row['arch']) == (platform, arch) for row in record['matrix']):
+        raise ReleaseError('target does not match reservation')
     source = Path('.private-source').resolve()
     if subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip() != record['sourceSha']:
         raise ReleaseError('source checkout SHA mismatch')
@@ -67,7 +68,7 @@ def build_release(publisher, run, platform, arch):
                     diagnostic = diagnostic.replace(value.encode(), b'[REDACTED]')
             log_key = f'{publisher.prefix}/runs/{run}/{platform}-{arch}/private-build.log'
             publisher.store.put(log_key, diagnostic, True)
-            print('Build exited ' + str(result.returncode) + '; diagnostic retained in the private control bucket: ' + log_key)
+            print('Build exited ' + str(result.returncode) + '; temporary private diagnostic: ' + log_key)
             raise ReleaseError('private source build failed')
         bundle = bundle_directory(packages)
         publisher.prepare(record, {'platform': platform, 'arch': arch}, bundle)

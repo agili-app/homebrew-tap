@@ -1,7 +1,7 @@
-"""Reservation, baseline selection and resumable release publication."""
+"""Reservation, baseline selection and one-shot release publication."""
 import json
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from email.message import Message
 
 from artifacts import prepare_target
@@ -63,10 +63,7 @@ class Publisher:
         state, etag = self.state()
         run = str(run)
         if run in state['runs']:
-            existing = state['runs'][run]
-            if (existing['product'], existing['channel'], existing['sourceSha'], existing['matrix'], existing.get('requestedVersion', ''), existing.get('bump', 'patch'), existing.get('sourceRef', 'main'), existing.get('rebuild', False)) != (self.product, channel, sha, matrix, requested, bump, source_ref, rebuild):
-                raise ReleaseError('retry reservation parameters differ')
-            return existing
+            raise ReleaseError('run already reserved; start a new workflow_dispatch release')
         if not re.fullmatch(r'[1-9][0-9]*', run):
             raise ReleaseError('runId must be a positive integer')
         if int(run) <= state['lastRunId']:
@@ -81,8 +78,11 @@ class Publisher:
         if rebuild:
             if not requested or state['publishedStableVersion'] == '0.0.0' or version(base) != version(state['publishedStableVersion']):
                 raise ReleaseError('rebuild requires the current published stable version explicitly')
-        elif version(base) <= version(frozen):
-            raise ReleaseError('stable version is frozen; duplicate/downgrade rejected')
+        elif channel == 'stable':
+            if version(base) < version(frozen) or version(base) <= version(state['publishedStableVersion']):
+                raise ReleaseError('stable version is frozen; published versions require rebuild')
+        elif version(base) <= version(frozen) and not (requested == base == frozen):
+            raise ReleaseError('preview version is frozen; request the current base explicitly')
         state['seq'] += 1
         validate_build_seq(state['seq'])
         update = base if channel == 'stable' else f'{base}-preview.{state["seq"]}'
@@ -91,17 +91,14 @@ class Publisher:
                   'buildSeq': state['seq'], 'artifactPrefix': f'{channel}/{self.prefix}/releases', 'matrix': matrix, 'status': 'reserved',
                   'requestedVersion': requested, 'bump': bump, 'rebuild': rebuild,
                   'publishedAt': datetime.now(timezone.utc).isoformat()}
-        if rebuild:
+        if channel == 'stable':
             record['artifactPath'] = f'{update}/build-{record["buildSeq"]}'
         state['runs'][run] = record
         self.save(state, etag)
         return record
 
     def prune_stages(self, run):
-        state, _ = self.state()
-        published = [key for key, record in state['runs'].items() if record['status'] == 'published']
-        self.store.prune_stages(f'{self.prefix}/runs/', str(run), published,
-                                datetime.now(timezone.utc) - timedelta(days=14))
+        self.store.prune_stages(f'{self.prefix}/runs/', str(run))
 
     def cleanup_run(self, run):
         self.store.delete_prefix(f'{self.prefix}/runs/{run}/')
@@ -111,11 +108,7 @@ class Publisher:
 
     def stage(self, run, platform, arch, data):
         key = self.stage_key(run, platform, arch)
-        old, _ = self.store.get(key, True)
-        if old is not None and old != data:
-            raise ReleaseError('signed stage collision; retry must reuse existing bundle')
-        if old is None:
-            self.store.put(key, data, True, absent=True)
+        self.store.put(key, data, True, absent=True)
 
     def immutable(self, key, data):
         if '\r' in key or '\n' in key:
@@ -123,11 +116,10 @@ class Publisher:
         filename = re.sub(r'[^A-Za-z0-9._-]', '_', key.rsplit('/', 1)[-1]) or 'download'
         header = Message()
         header.add_header('Content-Disposition', 'attachment', filename=filename)
-        old, etag = self.store.get(key)
-        if old is not None and old != data:
+        old, _ = self.store.get(key)
+        if old is not None:
             raise ReleaseError('immutable artifact collision')
-        # Reapply metadata to identical objects from interrupted/older publishers.
-        self.store.put(key, data, etag=etag, absent=old is None, cache=IMMUTABLE,
+        self.store.put(key, data, absent=True, cache=IMMUTABLE,
                        disposition=header['Content-Disposition'])
         self.store.verify_public(public_artifact_url(self.base, key, self.prefix), data)
 
@@ -171,29 +163,37 @@ class Publisher:
     def prepare(self, record, row, bundle):
         return prepare_target(self.product, self.prefix, self.base, record, row, bundle)
 
-    def needs_build(self, run, platform, arch):
-        record = self.reservation(run)
-        row = next((row for row in record['matrix'] if (row['platform'], row['arch']) == (platform, arch)), None)
-        if row is None:
-            raise ReleaseError('target does not match reservation')
-        if record['status'] == 'published':
-            return False
-        bundle, _ = self.store.get(self.stage_key(run, platform, arch), True)
-        if bundle is None:
+    def can_advance(self, record, current):
+        if not current:
             return True
-        self.prepare(record, row, bundle)
-        return False
+        if record['buildSeq'] <= current['buildSeq']:
+            return False
+        if version(record['updateVersion']) >= version(current['updateVersion']):
+            return True
+        # Older publishers also put stable releases in preview; permit only that base's migration.
+        return (record['channel'] == 'preview'
+                and record.get('requestedVersion') == record['displayVersion']
+                and version(current['updateVersion']).prerelease is None
+                and current['updateVersion'] == record['displayVersion'])
 
     def publish(self, run):
         state, etag = self.state()
         record = state['runs'][str(run)]
-        if record['status'] == 'published':
-            self.cleanup_run(run)
-            return record['releaseInfo']
+        if record['status'] != 'reserved':
+            raise ReleaseError('run cannot be published again; start a new workflow_dispatch release')
+        record['status'] = 'publishing'
+        self.save(state, etag)
+        state, etag = self.state()
+        record = state['runs'][str(run)]
         public_data, _ = self.store.get(f'{self.prefix}/release-info.json')
-        public_info = json.loads(public_data) if public_data else None
-        current = public_info['channels'].get(record['channel']) if public_info else None
-        if current and (current['buildSeq'] > record['buildSeq'] or version(current['updateVersion']) > version(record['updateVersion'])):
+        info = json.loads(public_data) if public_data else {'schemaVersion': 1, 'product': self.product, 'channels': {'stable': None, 'preview': None}, 'history': []}
+        highwaters = state.setdefault('channels', {})
+        for channel, live in info['channels'].items():
+            if live and channel not in highwaters:
+                highwaters[channel] = {'runId': None, 'updateVersion': live['updateVersion'], 'buildSeq': live['buildSeq']}
+        channel = record['channel']
+        if not all(self.can_advance(record, current) for current in (
+                info['channels'].get(channel), highwaters.get(channel))):
             raise ReleaseError('superseded reservation cannot advance mutable release metadata')
         prepared = []
         for row in record['matrix']:
@@ -211,78 +211,27 @@ class Publisher:
                 self.immutable(key, data)
         downloads = [a for _, item in prepared for a in item.downloads]
         updates = [a for _, item in prepared for a in item.updates]
-        info_data, _ = self.store.get(f'{self.prefix}/release-info.json')
-        info = json.loads(info_data) if info_data else {'schemaVersion': 1, 'product': self.product, 'channels': {'stable': None, 'preview': None}, 'history': []}
         release = {k: record[k] for k in ('displayVersion', 'updateVersion', 'channel', 'buildSeq', 'publishedAt')}
         release.update(notes=record.get('notes', ''), downloads=downloads)
-        highwaters = state.setdefault('channels', {})
-        # Seed older control records from the public index before claiming a channel.
-        for channel, live in info['channels'].items():
-            if live and channel not in highwaters:
-                highwaters[channel] = {'runId': None, 'updateVersion': live['updateVersion'], 'buildSeq': live['buildSeq']}
-        channels = record.get('publishingChannels')
-        if channels is not None:
-            if highwaters.get(record['channel'], {}).get('runId') != str(run):
-                raise ReleaseError('superseded reservation lost its target channel owner')
-            channels = [channel for channel in channels if highwaters.get(channel, {}).get('runId') == str(run)]
-        if channels is None:
-            channels = [record['channel']]
-            preview = highwaters.get('preview')
-            if record['channel'] == 'stable' and (preview is None or (
-                    record['buildSeq'] > preview['buildSeq'] and (
-                        version(record['updateVersion']) > version(preview['updateVersion']) or (
-                            record.get('rebuild', False) and record['updateVersion'] == preview['updateVersion'])))):
-                channels.append('preview')
-        for channel in channels:
-            watermark = highwaters.get(channel)
-            if watermark and watermark['runId'] != str(run) and (
-                    version(record['updateVersion']) < version(watermark['updateVersion']) or (
-                        version(record['updateVersion']) == version(watermark['updateVersion']) and (
-                            not record.get('rebuild', False) or record['buildSeq'] <= watermark['buildSeq']))):
-                raise ReleaseError('superseded reservation cannot advance mutable release metadata')
-        record['publishingChannels'] = channels
-        progress = record.setdefault('mutableObjects', {})
-        for channel in channels:
-            highwaters[channel] = {'runId': str(run), 'updateVersion': record['updateVersion'], 'buildSeq': record['buildSeq']}
-        # Persist ownership and all channel highwaters before the first mutable PUT.
+        highwaters[channel] = {'runId': str(run), 'updateVersion': record['updateVersion'], 'buildSeq': record['buildSeq']}
+        # Freeze the channel before the first mutable PUT, even if a later PUT fails.
         self.save(state, etag)
         state, etag = self.state()
         record = state['runs'][str(run)]
-        progress = record['mutableObjects']
-
-        def mutable(key, payload):
-            nonlocal state, etag, record, progress
-            checksum = digest(encoded(payload))
-            if progress.get(key) == {'sha256': checksum, 'status': 'done'}:
-                return
-            progress[key] = {'sha256': checksum, 'status': 'writing'}
-            self.save(state, etag)
-            state, etag = self.state()
-            record = state['runs'][str(run)]
-            progress = record['mutableObjects']
-            self.store.put(key, encoded(payload), cache=DYNAMIC)
-            progress[key]['status'] = 'done'
-            self.save(state, etag)
-            state, etag = self.state()
-            record = state['runs'][str(run)]
-            progress = record['mutableObjects']
-
-        for channel in channels:
-            if self.product == 'tinymd':
-                feed = {'schema_version': 1, 'version': record['updateVersion'], 'notes': release['notes'],
-                        'assets': [a for _, item in prepared for a in item.assets]}
-                mutable(f'{self.prefix}/feeds/{channel}/latest.json', feed)
-            else:
-                for row, item in prepared:
-                    target = {'macos': 'darwin', 'windows': 'windows', 'linux': 'linux'}[row['platform']] + '-' + {'x86_64': 'amd64', 'arm64': 'arm64', 'universal': 'universal'}[row['arch']]
-                    mutable(f'{self.prefix}/feeds/{channel}/update-{target}.json', item.native)
-            info['channels'][channel] = release
+        if self.product == 'tinymd':
+            feed = {'schema_version': 1, 'version': record['updateVersion'], 'notes': release['notes'],
+                    'assets': [a for _, item in prepared for a in item.assets]}
+            self.store.put(f'{self.prefix}/feeds/{channel}/latest.json', encoded(feed), cache=DYNAMIC)
+        else:
+            for row, item in prepared:
+                target = {'macos': 'darwin', 'windows': 'windows', 'linux': 'linux'}[row['platform']] + '-' + {'x86_64': 'amd64', 'arm64': 'arm64', 'universal': 'universal'}[row['arch']]
+                self.store.put(f'{self.prefix}/feeds/{channel}/update-{target}.json', encoded(item.native), cache=DYNAMIC)
+        info['channels'][channel] = release
         info['history'] = [h for h in info.get('history', []) if h['updateVersion'] != release['updateVersion']] + [release]
         info['history'] = sorted(info['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-3:]
-        mutable(f'{self.prefix}/release-info.json', info)
+        self.store.put(f'{self.prefix}/release-info.json', encoded(info), cache=DYNAMIC)
         record.update(status='published', releaseInfo=release)
         state['history'] = [h for h in state['history'] if h['updateVersion'] != release['updateVersion']] + [{**release, 'updates': updates}]
         state['history'] = sorted(state['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']))[-3:]
         self.save(state, etag)
-        self.cleanup_run(run)
         return release

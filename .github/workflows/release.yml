@@ -25,10 +25,6 @@ on:
       source_ref:
         type: string
         default: main
-      resume_run:
-        description: Optional run ID to reuse failed signed stage
-        type: string
-        required: false
 
 # The lock includes plan, every native build, mutable feeds, Cask, and webhook.
 concurrency:
@@ -39,8 +35,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_RUN_ID: ${{ inputs.resume_run || github.run_id }}
-  RELEASE_RESUME_RUN: ${{ inputs.resume_run }}
+  RELEASE_RUN_ID: ${{ github.run_id }}
   R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
   R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
   R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -97,15 +92,7 @@ jobs:
           cache: pip
           cache-dependency-path: scripts/release/requirements.lock
       - run: python -m pip install --require-hashes -r scripts/release/requirements.lock
-      - name: Check reusable signed stage
-        id: stage
-        env:
-          PRODUCT: ${{ inputs.product }}
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-        run: python scripts/release/publisher.py check-stage --product "$PRODUCT" --platform "$PLATFORM" --arch "$ARCH"
-      - if: steps.stage.outputs.needs-build == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ needs.plan.outputs.repo }}
           ref: ${{ needs.plan.outputs.sha }}
@@ -113,22 +100,21 @@ jobs:
           path: .private-source
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.stage.outputs.needs-build == 'true' && inputs.product == 'metrix-bar'
+        if: inputs.product == 'metrix-bar'
         with:
           go-version-file: .private-source/go.mod
           cache: false
       - name: Check public dependency cache boundary
-        if: steps.stage.outputs.needs-build == 'true'
         env:
           PRODUCT: ${{ inputs.product }}
         run: python scripts/release/cache_guard.py "$PRODUCT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.stage.outputs.needs-build == 'true' && inputs.product == 'metrix-bar'
+        if: inputs.product == 'metrix-bar'
         with:
           path: ${{ runner.temp }}/agili-public-gomod
           key: public-gomod-${{ runner.os }}-${{ runner.arch }}-${{ matrix.arch }}-${{ hashFiles('.private-source/go.mod', '.private-source/go.sum') }}
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.stage.outputs.needs-build == 'true' && inputs.product == 'tinymd'
+        if: inputs.product == 'tinymd'
         with:
           path: |
             ~/.cargo/registry/index
@@ -137,29 +123,29 @@ jobs:
           key: public-cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.arch }}-${{ hashFiles('.private-source/Cargo.lock', '.private-source/rust-toolchain.toml') }}
       - name: Read pinned TinyMD Rust toolchain
         id: rust
-        if: steps.stage.outputs.needs-build == 'true' && inputs.product == 'tinymd'
+        if: inputs.product == 'tinymd'
         env:
           PLATFORM: ${{ matrix.platform }}
           ARCH: ${{ matrix.arch }}
         run: python scripts/release/bootstrap.py rust-toolchain
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # reviewed master
-        if: steps.stage.outputs.needs-build == 'true' && inputs.product == 'tinymd'
+        if: inputs.product == 'tinymd'
         with:
           toolchain: ${{ steps.rust.outputs.channel }}
           targets: ${{ steps.rust.outputs.targets }}
       - name: Bootstrap pinned TinyMD public tools
-        if: steps.stage.outputs.needs-build == 'true' && inputs.product == 'tinymd'
+        if: inputs.product == 'tinymd'
         env:
           PLATFORM: ${{ matrix.platform }}
         run: python scripts/release/bootstrap.py "$PLATFORM"
       - name: Select Xcode for original app icons
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        if: steps.stage.outputs.needs-build == 'true' && matrix.platform == 'macos'
+        if: matrix.platform == 'macos'
         with:
           xcode-version: '26.3'
       - name: Import ephemeral Apple credentials
         id: apple
-        if: steps.stage.outputs.needs-build == 'true' && matrix.platform == 'macos'
+        if: matrix.platform == 'macos'
         env:
           PRODUCT: ${{ inputs.product }}
           DEVELOPER_ID_P12_BASE64: ${{ inputs.product == 'tinymd' && secrets.TINYMD_DEVELOPER_ID_P12_BASE64 || secrets.METRIX_DEVELOPER_ID_P12_BASE64 }}
@@ -172,8 +158,7 @@ jobs:
           PROVISIONING_PROFILE_PREVIEW_BASE64: ${{ inputs.product == 'tinymd' && secrets.PROVISIONING_PROFILE_PREVIEW_BASE64 || '' }}
         run: python scripts/release/apple_signing.py prepare "$PRODUCT"
       # No public cache or CI artifact contains private source/target/GOCACHE.
-      - name: Build and retain signed packages in private R2
-        if: steps.stage.outputs.needs-build == 'true'
+      - name: Build and stage signed packages in private R2
         env:
           PRODUCT: ${{ inputs.product }}
           PLATFORM: ${{ matrix.platform }}
@@ -220,3 +205,23 @@ jobs:
           PRODUCT: ${{ inputs.product }}
           DEPLOY_WEBHOOK_URL: ${{ inputs.product == 'tinymd' && vars.TINYMD_DEPLOY_WEBHOOK_URL || vars.METRIX_DEPLOY_WEBHOOK_URL }}
         run: python scripts/release/publisher.py webhook --product "$PRODUCT"
+
+  cleanup:
+    needs: [plan, build, publish]
+    if: always() && needs.plan.result == 'success' && github.event_name == 'workflow_dispatch' && github.repository == 'agili-app/homebrew-tap'
+    environment: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: scripts/release/requirements.lock
+      - run: python -m pip install --require-hashes -r scripts/release/requirements.lock
+      - name: Delete temporary private packages and diagnostics
+        env:
+          PRODUCT: ${{ inputs.product }}
+        run: python scripts/release/publisher.py cleanup --product "$PRODUCT"

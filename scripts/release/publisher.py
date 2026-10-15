@@ -24,7 +24,7 @@ def github(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['plan', 'check-stage', 'build', 'publish', 'webhook'])
+    parser.add_argument('command', choices=['plan', 'build', 'publish', 'webhook', 'cleanup'])
     parser.add_argument('--product', required=True, choices=PRODUCTS)
     parser.add_argument('--run-id', default=os.environ.get('RELEASE_RUN_ID') or os.environ.get('GITHUB_RUN_ID'))
     parser.add_argument('--platform')
@@ -34,11 +34,10 @@ def main():
         parser.error('--run-id is required outside GitHub Actions')
     if not re.fullmatch(r'[1-9][0-9]*', args.run_id):
         parser.error('--run-id must be a positive integer string')
-    resume_run = os.environ.get('RELEASE_RESUME_RUN', '')
-    if resume_run and (not re.fullmatch(r'[1-9][0-9]*', resume_run) or resume_run != args.run_id):
-        parser.error('RELEASE_RESUME_RUN must match --run-id as a positive integer string')
-    if args.command in {'build', 'check-stage'} and (not args.platform or not args.arch):
-        parser.error('--platform and --arch are required for build/check-stage')
+    if args.command != 'cleanup' and os.environ.get('GITHUB_RUN_ATTEMPT', '1') != '1':
+        raise ReleaseError('workflow reruns are disabled; start a new workflow_dispatch release')
+    if args.command == 'build' and (not args.platform or not args.arch):
+        parser.error('--platform and --arch are required for build')
     publisher = Publisher(R2(), args.product, os.environ.get('DOWNLOAD_BASE_URL'))
     if args.command == 'plan':
         rebuild_input = os.environ.get('RELEASE_REBUILD', 'false')
@@ -46,27 +45,20 @@ def main():
             raise ReleaseError('RELEASE_REBUILD must be true or false')
         rebuild = rebuild_input == 'true'
         state, _ = publisher.state()
-        record = state['runs'].get(str(args.run_id))
-        if resume_run and record is None:
-            raise ReleaseError('resume run has no reservation for this product')
-        if record is not None:
-            if (record['product'], record['channel'], record.get('requestedVersion', ''), record.get('bump', 'patch'), record.get('sourceRef', 'main'), record.get('rebuild', False)) != (args.product, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), os.environ.get('SOURCE_REF', 'main'), rebuild):
-                raise ReleaseError('retry inputs differ')
-        if record is None:
-            repo = PRODUCTS[args.product][0]
-            sha = github(repo + '/commits/' + quote(os.environ.get('SOURCE_REF', 'main'), safe=''))['sha']
-            if not re.fullmatch('[0-9a-f]{40}', sha):
-                raise ReleaseError('source commit must be full SHA')
-            doc = github(repo + '/contents/scripts/release/platforms.json?ref=' + sha)
-            matrix = targets(json.loads(base64.b64decode(doc['content'])))
-            record = publisher.reserve(args.run_id, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), sha, matrix, os.environ.get('SOURCE_REF', 'main'), rebuild)
+        if str(args.run_id) in state['runs']:
+            raise ReleaseError('run already reserved; start a new workflow_dispatch release')
+        repo = PRODUCTS[args.product][0]
+        sha = github(repo + '/commits/' + quote(os.environ.get('SOURCE_REF', 'main'), safe=''))['sha']
+        if not re.fullmatch('[0-9a-f]{40}', sha):
+            raise ReleaseError('source commit must be full SHA')
+        doc = github(repo + '/contents/scripts/release/platforms.json?ref=' + sha)
+        matrix = targets(json.loads(base64.b64decode(doc['content'])))
+        record = publisher.reserve(args.run_id, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), sha, matrix, os.environ.get('SOURCE_REF', 'main'), rebuild)
         publisher.prune_stages(args.run_id)
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write('sha=' + record['sourceSha'] + '\nrepo=' + PRODUCTS[args.product][0] + '\nmatrix=' + json.dumps({'include': record['matrix']}) + '\n')
-    elif args.command == 'check-stage':
-        needs_build = publisher.needs_build(args.run_id, args.platform, args.arch)
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            output.write('needs-build=' + str(needs_build).lower() + '\n')
+    elif args.command == 'cleanup':
+        publisher.cleanup_run(args.run_id)
     elif args.command == 'build':
         build_release(publisher, args.run_id, args.platform, args.arch)
     elif args.command == 'publish':
