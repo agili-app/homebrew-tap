@@ -90,11 +90,12 @@ class Publisher:
 
     def baseline(self, run, platform, arch, directory):
         state, _ = self.state()
-        current = version(state['runs'][str(run)]['updateVersion'])
+        record = state['runs'][str(run)]
+        current = version(record['updateVersion'])
         history = sorted(state['history'], key=lambda r: (version(r['updateVersion']), r['buildSeq']), reverse=True)
         result, counts = [], {}
         for previous in history:
-            if version(previous['updateVersion']) >= current:
+            if previous['channel'] != record['channel'] or version(previous['updateVersion']) >= current:
                 continue
             for item in previous['updates']:
                 format = item['format']
