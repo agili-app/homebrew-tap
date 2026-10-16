@@ -5,7 +5,9 @@
 ## 安装
 
 ```bash
-brew install --cask agili-app/tap/tinymd      # TinyMD
+brew install --cask agili-app/tap/tinymd      # TinyMD App 和 CLI
+brew install --cask agili-app/tap/tinymd-app  # 仅 TinyMD App
+brew install --cask agili-app/tap/tinymd-cli  # 仅 TinyMD CLI
 brew install --cask agili-app/tap/metrix-bar  # Metrix.Bar
 ```
 

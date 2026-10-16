@@ -15,6 +15,7 @@ cask "tinymd-cli" do
 
   # macOS 15.3 required; Homebrew allows 15.0+, but macOS <15.3 is rejected by LSMinimumSystemVersion on launch.
   depends_on macos: :sequoia
+  conflicts_with cask: "tinymd"
 
   binary "TinyMD.app/Contents/Helpers/tinymd"
 end
