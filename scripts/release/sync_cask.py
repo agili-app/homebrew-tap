@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Regenerate a product's Casks from current stable metadata on the latest main branch."""
+"""Regenerate Homebrew and Scoop manifests from stable metadata on latest main."""
 import argparse
 import json
 from pathlib import Path
-import re
 import subprocess
 import tempfile
 
 from common import PRODUCTS, ReleaseError, run_cli, validate_minimum_system_version
 from storage import R2
+from sync_scoop import scoop_paths, update_scoop
 
 
 # Homebrew's MacOSVersion::SYMBOLS; publishing runs on Linux without Homebrew.
@@ -54,31 +54,87 @@ def update_cask(checkout, product, release):
         render_cask(checkout / filename, product, release, chosen, minimum)
 
 
+def asset_config(assets):
+    if assets[0]['arch'] == 'universal':
+        asset = assets[0]
+        return f'  sha256 "{asset["sha256"]}"\n\n  url "{asset["url"]}"'
+    return '\n'.join(
+        f'  on_{"arm" if a["arch"] == "arm64" else "intel"} do\n'
+        f'    sha256 "{a["sha256"]}"\n    url "{a["url"]}"\n  end'
+        for a in assets
+    )
+
+
+def platform_block(platform, text):
+    return f'  on_{platform} do\n' + '\n'.join('  ' + line if line else '' for line in text.splitlines()) + '\n  end'
+
+
 def render_cask(path, product, release, chosen, minimum):
-    universal = chosen[0]['arch'] == 'universal'
-    text = path.read_text()
-    text = re.sub(r'^  version ".*"', f'  version "{release["displayVersion"]}"', text, flags=re.M)
-    homepage = {'tinymd': 'https://tinymd.app', 'metrix-bar': 'https://metrix.bar'}[product]
-    text = re.sub(r'^  homepage ".*"', f'  homepage "{homepage}"', text, flags=re.M)
-    start = text.index('\n', text.index('  version ')) + 1
-    end = text.index('  name ', start)
-    if universal:
-        asset = chosen[0]
-        replacement = f'  sha256 "{asset["sha256"]}"\n\n  url "{asset["url"]}"\n'
-    else:
-        replacement = '\n' + '\n'.join(f'  on_{"arm" if a["arch"] == "arm64" else "intel"} do\n    sha256 "{a["sha256"]}"\n    url "{a["url"]}"\n  end' for a in chosen) + '\n'
-    text = text[:start] + replacement + text[end:]
-    text = re.sub(r'^  depends_on arch: .*\n', '', text, flags=re.M)
-    text = re.sub(r'^  # macOS .*?required;.*?\n(?=  depends_on macos:)', '', text, flags=re.M | re.S)
-    text = re.sub(r'^  # macOS .*?LSMinimumSystemVersion on launch\.\n', '', text, flags=re.M | re.S)
+    token = path.stem
+    linux_role = 'cli' if token == 'tinymd-cli' else 'gui'
+    linux = [a for a in release['downloads']
+             if a['platform'] == 'linux' and a['format'] == 'tar.gz'
+             and a['arch'] in {'arm64', 'x86_64'} and a.get('role', 'gui') == linux_role]
+    if token == 'tinymd':
+        cli_arches = {a['arch'] for a in release['downloads']
+                      if a['platform'] == 'linux' and a['format'] == 'tar.gz'
+                      and a.get('role', 'gui') == 'cli' and a['arch'] in {'arm64', 'x86_64'}}
+        linux = [a for a in linux if a['arch'] in cli_arches]
+    linux = [next(a for a in linux if a['arch'] == arch)
+             for arch in ('arm64', 'x86_64') if any(a['arch'] == arch for a in linux)]
+
+    name, description, homepage = {
+        'tinymd': ('TinyMD', 'A minimal Markdown editor', 'https://tinymd.app'),
+        'tinymd-app': ('TinyMD', 'A minimal Markdown editor', 'https://tinymd.app'),
+        'tinymd-cli': ('TinyMD CLI', 'A command-line tool for Markdown documents', 'https://tinymd.app'),
+        'metrix-bar': ('Metrix.Bar', 'A minimal menu bar metrics monitor', 'https://metrix.bar'),
+    }[token]
     requirement = macos_requirement(minimum)
-    if re.search(r'^  depends_on macos:', text, flags=re.M):
-        text = re.sub(r'^  depends_on macos:.*', requirement, text, flags=re.M)
+    if chosen[0]['arch'] != 'universal' and len(chosen) == 1:
+        requirement += f'\n  depends_on arch: :{chosen[0]["arch"]}'
+    mac_conflict = {
+        'tinymd': '  conflicts_with cask: "tinymd-cli"',
+        'tinymd-cli': '  conflicts_with cask: "tinymd"',
+    }.get(token, '')
+    mac_artifacts = {
+        'tinymd': '  app "TinyMD.app"\n  binary "#{appdir}/TinyMD.app/Contents/Helpers/tinymd"',
+        'tinymd-app': '  app "TinyMD.app"',
+        'tinymd-cli': '  binary "TinyMD.app/Contents/Helpers/tinymd"',
+        'metrix-bar': '  app "Metrix.Bar.app"',
+    }[token]
+    if token != 'tinymd-cli':
+        bundle = 'bar.metrix' if product == 'metrix-bar' else 'app.tinymd.TinyMD'
+        mac_artifacts += (f'\n\n  zap trash: [\n'
+                          f'    "~/Library/Application Support/{bundle}",\n'
+                          f'    "~/Library/Caches/{bundle}",\n'
+                          f'    "~/Library/Preferences/{bundle}.plist",\n'
+                          f'    "~/Library/Saved Application State/{bundle}.savedState",\n  ]')
+    metadata = f'  name "{name}"\n  desc "{description}"\n  homepage "{homepage}"'
+    common = []
+    if token != 'tinymd-cli':
+        common.append('  auto_updates true')
+    if token in {'tinymd', 'tinymd-app'}:
+        common.append(f'  conflicts_with cask: "{"tinymd-app" if token == "tinymd" else "tinymd"}"')
+    if linux:
+        mac = '\n\n'.join(filter(None, [asset_config(chosen), requirement, mac_conflict, mac_artifacts]))
+        linux_config = asset_config(linux)
+        if len(linux) == 1:
+            linux_config += f'\n\n  depends_on arch: :{linux[0]["arch"]}'
+        if token == 'tinymd':
+            linux_config += '\n\n  depends_on cask: "agili-app/tap/tinymd-cli"'
+        linux_binary = {
+            'tinymd': '  binary "TinyMD", target: "tinymd-app"',
+            'tinymd-app': '  binary "TinyMD", target: "tinymd-app"',
+            'tinymd-cli': '  binary "tinymd"',
+            'metrix-bar': '  binary "metrix-bar"',
+        }[token]
+        body = '\n\n'.join(filter(None, [metadata, '\n'.join(common), platform_block('macos', mac),
+                                               platform_block('linux', linux_config + '\n\n' + linux_binary)]))
     else:
-        text = text.replace('  homepage "' + homepage + '"', '  homepage "' + homepage + '"\n\n' + requirement)
-    if not universal and len(chosen) == 1:
-        text = re.sub(r'^(  depends_on macos:.*)$', rf'\1\n  depends_on arch: :{chosen[0]["arch"]}', text, flags=re.M)
-    path.write_text(text)
+        body = '\n\n'.join(filter(None, [asset_config(chosen), metadata,
+                                               '\n'.join([requirement, *common, *([mac_conflict] if mac_conflict else [])]),
+                                               mac_artifacts]))
+    path.write_text(f'cask "{token}" do\n  version "{release["displayVersion"]}"\n\n{body}\nend\n')
 
 
 def git(directory, *args, check=True):
@@ -89,7 +145,7 @@ def git(directory, *args, check=True):
 def sync(product, stable_reader, remote='origin', branch='main', attempts=3):
     # An isolated checkout avoids resetting the workflow's scripts/private outputs.
     remote_url = git(Path.cwd(), 'remote', 'get-url', remote).stdout.strip()
-    with tempfile.TemporaryDirectory(prefix='agili-cask-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='agili-packages-') as temporary:
         checkout = Path(temporary)
         git(checkout, 'init')
         git(checkout, 'remote', 'add', 'origin', remote_url)
@@ -107,14 +163,15 @@ def sync(product, stable_reader, remote='origin', branch='main', attempts=3):
             if stable is None:
                 raise ReleaseError('stable metadata missing')
             update_cask(checkout, product, stable)
-            filenames = cask_paths(product)
-            if git(checkout, 'diff', '--quiet', '--', *filenames, check=False).returncode == 0:
-                return 'unchanged'
+            update_scoop(checkout, product, stable)
+            filenames = cask_paths(product) + scoop_paths(product)
             git(checkout, 'add', *filenames)
-            git(checkout, 'commit', '-m', f'chore(casks): sync stable {product} release')
+            if git(checkout, 'diff', '--cached', '--quiet', '--', *filenames, check=False).returncode == 0:
+                return 'unchanged'
+            git(checkout, 'commit', '-m', f'chore(packages): sync stable {product} release')
             if git(checkout, 'push', 'origin', f'HEAD:refs/heads/{branch}', check=False).returncode == 0:
                 return 'updated'
-        raise ReleaseError('Cask push failed after bounded fetch/regenerate retries')
+        raise ReleaseError('Package manifest push failed after bounded fetch/regenerate retries')
 
 
 def main():
@@ -126,7 +183,7 @@ def main():
     def stable():
         data, _ = store.get(f'{prefix}/release-info.json')
         return json.loads(data)['channels']['stable'] if data else None
-    print('Cask sync: ' + sync(args.product, stable))
+    print('Package manifest sync: ' + sync(args.product, stable))
 
 
 if __name__ == '__main__':

@@ -26,7 +26,7 @@ on:
         type: string
         default: main
 
-# The lock includes plan, every native build, mutable feeds, Cask, and webhook.
+# The lock includes plan, every native build, mutable feeds, Homebrew/Scoop, and webhook.
 concurrency:
   group: native-release-${{ inputs.product }}
   cancel-in-progress: false
@@ -192,7 +192,7 @@ jobs:
         env:
           PRODUCT: ${{ inputs.product }}
         run: python scripts/release/publisher.py publish --product "$PRODUCT"
-      - name: Sync stable Homebrew Cask
+      - name: Sync stable Homebrew and Scoop manifests
         env:
           CHANNEL: ${{ inputs.channel }}
           PRODUCT: ${{ inputs.product }}
@@ -200,7 +200,7 @@ jobs:
           if [ "$CHANNEL" = stable ]; then
             python scripts/release/sync_cask.py --product "$PRODUCT"
           fi
-      - name: Preserve product deployment webhook after Cask success
+      - name: Preserve product deployment webhook after Homebrew and Scoop success
         env:
           PRODUCT: ${{ inputs.product }}
           DEPLOY_WEBHOOK_URL: ${{ inputs.product == 'tinymd' && vars.TINYMD_DEPLOY_WEBHOOK_URL || vars.METRIX_DEPLOY_WEBHOOK_URL }}
