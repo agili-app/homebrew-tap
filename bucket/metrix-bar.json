@@ -1,16 +1,16 @@
 {
-    "version": "0.0.1.7",
+    "version": "0.0.1.11",
     "description": "A minimal menu bar metrics monitor",
     "homepage": "https://metrix.bar",
     "license": "Proprietary",
     "architecture": {
         "arm64": {
-            "url": "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-7/windows-arm64/Metrix.Bar-Setup-0.0.1-arm64.exe#/dl.7z",
-            "hash": "4a680e09cbefb04468568ec6dccb4fd28e5161d5480c352312312a9cd9a3cb1a"
+            "url": "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-11/windows-arm64/Metrix.Bar-Setup-0.0.1-arm64.exe#/dl.7z",
+            "hash": "e2db4257c9ffe7d284dbc2b872b48e75bcc1a69163c6aa97c304d6e11089c517"
         },
         "64bit": {
-            "url": "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-7/windows-x86_64/Metrix.Bar-Setup-0.0.1-amd64.exe#/dl.7z",
-            "hash": "244dd2e5253b2bfa21c8e097e0dce99a4067c232329a63c29a631535c75a171b"
+            "url": "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-11/windows-x86_64/Metrix.Bar-Setup-0.0.1-amd64.exe#/dl.7z",
+            "hash": "ffb5502901a5e2ba284aacfb398effd0bbed90f18332fccaf63bb33f880c0a46"
         }
     },
     "bin": [
