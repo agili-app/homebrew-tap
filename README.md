@@ -18,9 +18,9 @@ brew install --cask agili-app/tap/metrix-bar  # Metrix.Bar
 ## Scoop（Windows）
 
 ```powershell
-scoop bucket add agili https://github.com/agili-app/homebrew-tap
-scoop install agili/tinymd      # TinyMD App 和 CLI
-scoop install agili/tinymd-app  # 仅 TinyMD App
-scoop install agili/tinymd-cli  # 仅 TinyMD CLI
-scoop install agili/metrix-bar  # Metrix.Bar
+scoop bucket add agili-app https://github.com/agili-app/homebrew-tap
+scoop install agili-app/tinymd      # TinyMD App 和 CLI
+scoop install agili-app/tinymd-app  # 仅 TinyMD App
+scoop install agili-app/tinymd-cli  # 仅 TinyMD CLI
+scoop install agili-app/metrix-bar  # Metrix.Bar
 ```
