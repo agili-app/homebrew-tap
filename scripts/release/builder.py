@@ -66,9 +66,9 @@ def build_release(publisher, run, platform, arch):
             for name, value in sensitive.items():
                 if value and any(token in name for token in ('KEY', 'TOKEN', 'PASSWORD', 'SECRET', 'BASE64')):
                     diagnostic = diagnostic.replace(value.encode(), b'[REDACTED]')
-            log_key = f'{publisher.prefix}/runs/{run}/{platform}-{arch}/private-build.log'
+            log_key = f'debug/{publisher.prefix}/{run}/{platform}-{arch}/private-build.log'
             publisher.store.put(log_key, diagnostic, True)
-            print('Build exited ' + str(result.returncode) + '; temporary private diagnostic: ' + log_key)
+            print('Build exited ' + str(result.returncode) + '; private diagnostic: ' + log_key)
             raise ReleaseError('private source build failed')
         bundle = bundle_directory(packages)
         publisher.prepare(record, {'platform': platform, 'arch': arch}, bundle)
