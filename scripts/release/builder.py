@@ -37,13 +37,24 @@ def build_release(publisher, run, platform, arch):
         'TINYMD_UPDATE_PRIVATE_KEY', 'TINYMD_UPDATE_PRIVATE_KEY_PATH', 'TINYMD_UPDATE_PUBLIC_KEY')
     for name in other_keys:
         env.pop(name, None)
-    env['RELEASE_BASELINES_JSON'] = json.dumps(publisher.baseline(run, platform, arch, baselines))
+    env.pop('RELEASE_BASELINES_JSON', None)
+    env.pop('RELEASE_BASELINES_FILE', None)
+    baseline_data = publisher.baseline(run, platform, arch, baselines)
     env['CARGO_TARGET_DIR'] = str(workspace / 'target')
     env['GOCACHE'] = str(workspace / 'gocache')
     if env.get('APPLE_TEAM_ID'):
         env['DEVELOPMENT_TEAM'] = env.get('DEVELOPMENT_TEAM') or env['APPLE_TEAM_ID']
     key_path = None
+    baseline_path = None
     try:
+        if publisher.product == 'metrix-bar':
+            with tempfile.NamedTemporaryFile(prefix='release-baselines-', suffix='.json', dir=workspace,
+                                             delete=False, mode='w', encoding='utf-8') as baseline_file:
+                baseline_path = Path(baseline_file.name)
+                json.dump(baseline_data, baseline_file, ensure_ascii=False)
+            env['RELEASE_BASELINES_FILE'] = str(baseline_path.resolve())
+        else:
+            env['RELEASE_BASELINES_JSON'] = json.dumps(baseline_data)
         if publisher.product == 'tinymd':
             secret = env.pop('TINYMD_UPDATE_PRIVATE_KEY', '')
             if secret:
@@ -74,5 +85,7 @@ def build_release(publisher, run, platform, arch):
         publisher.prepare(record, {'platform': platform, 'arch': arch}, bundle)
         publisher.stage(run, platform, arch, bundle)
     finally:
+        if baseline_path is not None:
+            baseline_path.unlink(missing_ok=True)
         if key_path is not None:
             key_path.unlink(missing_ok=True)
