@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 import zipfile
 
-from common import ReleaseError, digest, public_artifact_url, version, validate_minimum_system_version
+from common import ReleaseError, digest, public_artifact_url, version, validate_build_seq, validate_minimum_system_version
 
 
 @dataclass
@@ -19,6 +19,13 @@ class PreparedTarget:
     notes: str
 
 
+def _metrix_build_seq(value):
+    if type(value) is not int:
+        raise ReleaseError('Metrix.Bar buildSeq must be an integer')
+    validate_build_seq(value)
+    return value
+
+
 def prepare_target(product, prefix, base, record, row, bundle):
     with zipfile.ZipFile(io.BytesIO(bundle)) as archive:
         catalog = json.loads(archive.read('artifacts.json'))
@@ -27,6 +34,9 @@ def prepare_target(product, prefix, base, record, row, bundle):
                               ('updateVersion', record['updateVersion'])]:
             if catalog.get(key) != expected:
                 raise ReleaseError('catalog does not match reservation: ' + key)
+        if product == 'metrix-bar':
+            if _metrix_build_seq(catalog.get('buildSeq')) != _metrix_build_seq(record.get('buildSeq')):
+                raise ReleaseError('catalog does not match reservation: buildSeq')
         notes = catalog.get('notes')
         if notes is None and product == 'metrix-bar':
             notes = json.loads(archive.read(catalog['mygoManifestPath'])).get('notes')
@@ -89,6 +99,8 @@ def prepare_target(product, prefix, base, record, row, bundle):
         native = None
         if product == 'metrix-bar':
             native = json.loads(archive.read(catalog['mygoManifestPath']))
+            if _metrix_build_seq(native.get('buildSeq')) != record['buildSeq']:
+                raise ReleaseError('native MyGO manifest does not match reservation: buildSeq')
             native['notes'] = notes
             if native['version'] != record['updateVersion'] or not native.get('signature'):
                 raise ReleaseError('invalid native MyGO manifest')
