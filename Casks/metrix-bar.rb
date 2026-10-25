@@ -9,12 +9,12 @@ cask "metrix-bar" do
 
   on_macos do
     on_arm do
-      sha256 "02a93de6cd0d67579e1826bd2b6cc7160128f6a4a76919c1e96cd8049179ad23"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-11/macos-arm64/Metrix.Bar-0.0.1-arm64.dmg"
+      sha256 "64069b4728d6d6f5373b4bb51967e35e387312aa9d310cd58819c3b312730cbe"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-18/macos-arm64/Metrix.Bar-0.0.1-arm64.dmg"
     end
     on_intel do
-      sha256 "e7ddf535ee01be7765ad528c85c1f3c3595e5f3d797989bd80cbb542e0e14ae7"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-11/macos-x86_64/Metrix.Bar-0.0.1-amd64.dmg"
+      sha256 "da30c252d9ba6bdae2b9e3c51b3e7e9ec8cae6da7d3026e51ddb8f298943ab54"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-18/macos-x86_64/Metrix.Bar-0.0.1-amd64.dmg"
     end
 
     depends_on macos: :monterey
@@ -31,12 +31,12 @@ cask "metrix-bar" do
 
   on_linux do
     on_arm do
-      sha256 "662b96df992b30f94432cce9e1140a197c788a5398ba8d9200c6a4c103374053"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-11/linux-arm64/metrix-bar-0.0.1-linux-arm64.tar.gz"
+      sha256 "fb1c40bc57e807b08bb4e76726354308d9a7d23f5449ef4e781e7312484c1496"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-18/linux-arm64/metrix-bar-0.0.1-linux-arm64.tar.gz"
     end
     on_intel do
-      sha256 "056e545ece452fbe112a61b2d61ca1aaa6900df9e7624f94ba2f77c342dbb782"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-11/linux-x86_64/metrix-bar-0.0.1-linux-amd64.tar.gz"
+      sha256 "abc0e8ebb44f3a6035398d1675293d0befc508b9d9c96b642e3a786cf3122d55"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.0.1/build-18/linux-x86_64/metrix-bar-0.0.1-linux-amd64.tar.gz"
     end
 
     binary "metrix-bar"
