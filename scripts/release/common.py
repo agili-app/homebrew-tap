@@ -7,11 +7,48 @@ from urllib.parse import quote
 
 from semver import Version
 
-PRODUCTS = {'tinymd': ('miantiao-me/TinyMD.app', 'tinymd-app'),
-            'metrix-bar': ('miantiao-me/Metrix.Bar', 'metrix-bar')}
+APPLE_CREDENTIALS = {
+    'appleTeamId': 'APPLE_TEAM_ID',
+    'notaryAppleId': 'NOTARY_APPLE_ID',
+    'notaryPassword': 'NOTARY_APP_SPECIFIC_PASSWORD',
+}
+PRODUCTS = {
+    'tinymd': {
+        'repo': 'miantiao-me/TinyMD.app',
+        'prefix': 'tinymd-app',
+        'updater': 'gpui',
+        'credentials': {
+            **APPLE_CREDENTIALS,
+            'updatePublicKey': 'TINYMD_UPDATE_PUBLIC_KEY',
+            'updatePrivateKey': 'TINYMD_UPDATE_PRIVATE_KEY',
+            'developerIdP12Base64': 'TINYMD_DEVELOPER_ID_P12_BASE64',
+            'developerIdP12Password': 'TINYMD_DEVELOPER_ID_P12_PASSWORD',
+            'signingIdentity': 'TINYMD_SIGNING_IDENTITY',
+            'profileApp': 'PROVISIONING_PROFILE_APP_BASE64',
+            'profilePreview': 'PROVISIONING_PROFILE_PREVIEW_BASE64',
+            'deployWebhookUrl': 'TINYMD_DEPLOY_WEBHOOK_URL',
+        },
+    },
+    'metrix-bar': {
+        'repo': 'miantiao-me/Metrix.Bar',
+        'prefix': 'metrix-bar',
+        'updater': 'mygo',
+        'credentials': {
+            **APPLE_CREDENTIALS,
+            'updatePublicKey': 'METRIX_UPDATE_PUBLIC_KEY',
+            'updatePrivateKey': 'METRIX_UPDATE_PRIVATE_KEY',
+            'developerIdP12Base64': 'METRIX_DEVELOPER_ID_P12_BASE64',
+            'developerIdP12Password': 'METRIX_DEVELOPER_ID_P12_PASSWORD',
+            'signingIdentity': 'METRIX_SIGNING_IDENTITY',
+            'profileApp': '',
+            'profilePreview': '',
+            'deployWebhookUrl': 'METRIX_DEPLOY_WEBHOOK_URL',
+        },
+    },
+}
 DYNAMIC = 'public, max-age=300, s-maxage=300, must-revalidate'
 IMMUTABLE = 'public, max-age=31536000, immutable'
-RUNNERS = {'macos': {'macos-latest', 'macos-15', 'macos-15-intel', 'macos-14'},
+RUNNERS = {'macos': {'macos-latest', 'macos-26', 'macos-15', 'macos-15-intel', 'macos-14'},
            'windows': {'windows-latest', 'windows-2025', 'windows-11-arm'},
            'linux': {'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-24.04-arm'}}
 
@@ -57,7 +94,16 @@ def version(value):
     return Version.parse(value)
 
 
+def updater_protocol(product):
+    protocol = PRODUCTS[product]['updater']
+    if protocol not in {'gpui', 'mygo'}:
+        raise ReleaseError('unsupported updater protocol')
+    return protocol
+
+
 def validate_build_seq(seq):
+    if type(seq) is not int:
+        raise ReleaseError('buildSeq must be an integer')
     if not 0 < seq <= 9999 * 10000:
         raise ReleaseError('buildSeq exceeds Apple version capacity')
 

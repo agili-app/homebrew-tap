@@ -44,11 +44,9 @@ def quiet(args):
     return result.stdout
 
 
-def prepare(product):
+def prepare():
     required = ['DEVELOPER_ID_P12_BASE64', 'DEVELOPER_ID_P12_PASSWORD', 'MACOS_SIGNING_IDENTITY',
                 'APPLE_TEAM_ID', 'NOTARY_APPLE_ID', 'NOTARY_APP_SPECIFIC_PASSWORD']
-    if product == 'tinymd':
-        required += ['PROVISIONING_PROFILE_APP_BASE64', 'PROVISIONING_PROFILE_PREVIEW_BASE64']
     if any(not os.environ.get(name) for name in required):
         raise ValueError('missing Apple signing credentials')
     root = Path(os.environ['RUNNER_TEMP']) / 'agili-apple-signing'
@@ -74,19 +72,6 @@ def prepare(product):
     quiet(['xcrun', 'notarytool', 'store-credentials', profile, '--apple-id', os.environ['NOTARY_APPLE_ID'],
            '--team-id', os.environ['APPLE_TEAM_ID'], '--password', os.environ['NOTARY_APP_SPECIFIC_PASSWORD'],
            '--keychain', str(keychain)])
-    installed = []
-    if product == 'tinymd':
-        destination = Path.home() / 'Library/MobileDevice/Provisioning Profiles'
-        destination.mkdir(parents=True, exist_ok=True)
-        for label in ('APP', 'PREVIEW'):
-            data = base64.b64decode(os.environ[f'PROVISIONING_PROFILE_{label}_BASE64'], validate=True)
-            path = destination / f'agili-{os.environ["GITHUB_RUN_ID"]}-{label}.provisionprofile'
-            if path.exists():
-                raise ValueError('profile path already exists')
-            path.write_bytes(data)
-            path.chmod(0o600)
-            installed.append(str(path))
-            (root / 'profiles.json').write_text(json.dumps(installed))
     with open(os.environ['GITHUB_ENV'], 'a') as env:
         env.write(f'MACOS_NOTARY_KEYCHAIN_PROFILE={profile}\nMACOS_NOTARY_KEYCHAIN={keychain}\nSIGNING_KEYCHAIN_NAME={keychain}\n')
 
@@ -106,11 +91,6 @@ def cleanup():
     keychain = root / 'release.keychain-db'
     if keychain.exists():
         attempt('delete-keychain', lambda: quiet(['security', 'delete-keychain', str(keychain)]))
-    if (root / 'profiles.json').exists():
-        profiles = []
-        attempt('read-profiles', lambda: profiles.extend(json.loads((root / 'profiles.json').read_text())))
-        for path in profiles:
-            attempt('delete-profile', lambda path=path: Path(path).unlink(missing_ok=True))
     attempt('remove-temp-files', lambda: shutil.rmtree(root))
     if errors:
         raise RuntimeError('Apple cleanup failures: ' + ', '.join(errors))
@@ -120,8 +100,10 @@ if __name__ == '__main__':
     try:
         if sys.argv[1] == 'cleanup':
             cleanup()
+        elif sys.argv[1] == 'prepare':
+            prepare()
         else:
-            prepare(sys.argv[2])
+            raise ValueError('expected prepare or cleanup')
     except Exception as exc:
         print(str(exc) if sys.argv[1] == 'cleanup' else 'Apple credential step failed (' + type(exc).__name__ + ').', file=sys.stderr)
         sys.exit(1)

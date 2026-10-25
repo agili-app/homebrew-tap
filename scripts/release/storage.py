@@ -7,7 +7,7 @@ import urllib.request
 import boto3
 from botocore.exceptions import ClientError
 
-from common import ReleaseError, digest
+from common import PRODUCTS, ReleaseError, digest
 
 
 class R2:
@@ -50,7 +50,7 @@ class R2:
                 raise ReleaseError('public artifact verification failed')
 
     def _stage_prefix(self, prefix):
-        if prefix not in {'tinymd-app/runs/', 'metrix-bar/runs/'}:
+        if prefix not in {config['prefix'] + '/runs/' for config in PRODUCTS.values()}:
             raise ReleaseError('invalid private stage prefix')
         return prefix
 

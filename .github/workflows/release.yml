@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       product:
-        type: choice
-        options: [tinymd, metrix-bar]
+        description: Product registered in scripts/release/common.py
+        type: string
         required: true
       version:
         description: Optional X.Y.Z; empty uses bump
@@ -36,11 +36,6 @@ permissions:
 
 env:
   RELEASE_RUN_ID: ${{ github.run_id }}
-  R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-  R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
-  R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
 
 jobs:
   plan:
@@ -51,6 +46,7 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       repo: ${{ steps.plan.outputs.repo }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      credentials: ${{ steps.plan.outputs.credentials }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,6 +59,11 @@ jobs:
       - run: python -m pip install --require-hashes -r scripts/release/requirements.lock
       - id: plan
         env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
           SOURCE_TOKEN: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
           SOURCE_REF: ${{ inputs.source_ref }}
           CHANNEL: ${{ inputs.channel }}
@@ -78,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    runs-on: ${{ matrix.platform == 'macos' && (matrix.runner == 'macos-15' || (inputs.product == 'tinymd' && matrix.arch == 'x86_64')) && 'macos-26' || matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: bash
@@ -99,76 +100,39 @@ jobs:
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
           path: .private-source
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: inputs.product == 'metrix-bar'
+      - name: Set up pinned source build tools and public caches
+        uses: ./.private-source/scripts/release/setup
         with:
-          go-version-file: .private-source/go.mod
-          cache: false
-      - name: Check public dependency cache boundary
-        env:
-          PRODUCT: ${{ inputs.product }}
-        run: python scripts/release/cache_guard.py "$PRODUCT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: inputs.product == 'metrix-bar'
-        with:
-          path: ${{ runner.temp }}/agili-public-gomod
-          key: public-gomod-${{ runner.os }}-${{ runner.arch }}-${{ matrix.arch }}-${{ hashFiles('.private-source/go.mod', '.private-source/go.sum') }}
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: inputs.product == 'tinymd'
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/src
-          key: public-cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.arch }}-${{ hashFiles('.private-source/Cargo.lock', '.private-source/rust-toolchain.toml') }}
-      - name: Read pinned TinyMD Rust toolchain
-        id: rust
-        if: inputs.product == 'tinymd'
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-        run: python scripts/release/bootstrap.py rust-toolchain
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # reviewed master
-        if: inputs.product == 'tinymd'
-        with:
-          toolchain: ${{ steps.rust.outputs.channel }}
-          targets: ${{ steps.rust.outputs.targets }}
-      - name: Bootstrap pinned TinyMD public tools
-        if: inputs.product == 'tinymd'
-        env:
-          PLATFORM: ${{ matrix.platform }}
-        run: python scripts/release/bootstrap.py "$PLATFORM"
-      - name: Select Xcode for original app icons
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        if: matrix.platform == 'macos'
-        with:
-          xcode-version: '26.3'
+          platform: ${{ matrix.platform }}
+          arch: ${{ matrix.arch }}
       - name: Import ephemeral Apple credentials
         id: apple
         if: matrix.platform == 'macos'
         env:
-          PRODUCT: ${{ inputs.product }}
-          DEVELOPER_ID_P12_BASE64: ${{ inputs.product == 'tinymd' && secrets.TINYMD_DEVELOPER_ID_P12_BASE64 || secrets.METRIX_DEVELOPER_ID_P12_BASE64 }}
-          DEVELOPER_ID_P12_PASSWORD: ${{ inputs.product == 'tinymd' && secrets.TINYMD_DEVELOPER_ID_P12_PASSWORD || secrets.METRIX_DEVELOPER_ID_P12_PASSWORD }}
-          MACOS_SIGNING_IDENTITY: ${{ inputs.product == 'tinymd' && vars.TINYMD_SIGNING_IDENTITY || vars.METRIX_SIGNING_IDENTITY }}
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-          NOTARY_APP_SPECIFIC_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
-          PROVISIONING_PROFILE_APP_BASE64: ${{ inputs.product == 'tinymd' && secrets.PROVISIONING_PROFILE_APP_BASE64 || '' }}
-          PROVISIONING_PROFILE_PREVIEW_BASE64: ${{ inputs.product == 'tinymd' && secrets.PROVISIONING_PROFILE_PREVIEW_BASE64 || '' }}
-        run: python scripts/release/apple_signing.py prepare "$PRODUCT"
+          DEVELOPER_ID_P12_BASE64: ${{ secrets[fromJSON(needs.plan.outputs.credentials).developerIdP12Base64] }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets[fromJSON(needs.plan.outputs.credentials).developerIdP12Password] }}
+          MACOS_SIGNING_IDENTITY: ${{ vars[fromJSON(needs.plan.outputs.credentials).signingIdentity] }}
+          APPLE_TEAM_ID: ${{ vars[fromJSON(needs.plan.outputs.credentials).appleTeamId] }}
+          NOTARY_APPLE_ID: ${{ secrets[fromJSON(needs.plan.outputs.credentials).notaryAppleId] }}
+          NOTARY_APP_SPECIFIC_PASSWORD: ${{ secrets[fromJSON(needs.plan.outputs.credentials).notaryPassword] }}
+        run: python scripts/release/apple_signing.py prepare
       # No public cache or CI artifact contains private source/target/GOCACHE.
       - name: Build and stage signed packages in private R2
         env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
           PRODUCT: ${{ inputs.product }}
           PLATFORM: ${{ matrix.platform }}
           ARCH: ${{ matrix.arch }}
-          TINYMD_UPDATE_PUBLIC_KEY: ${{ inputs.product == 'tinymd' && vars.TINYMD_UPDATE_PUBLIC_KEY || '' }}
-          METRIX_UPDATE_PUBLIC_KEY: ${{ inputs.product == 'metrix-bar' && vars.METRIX_UPDATE_PUBLIC_KEY || '' }}
-          TINYMD_UPDATE_PRIVATE_KEY: ${{ inputs.product == 'tinymd' && secrets.TINYMD_UPDATE_PRIVATE_KEY || '' }}
-          MYGO_UPDATER_PRIVATE_KEY: ${{ inputs.product == 'metrix-bar' && secrets.METRIX_UPDATE_PRIVATE_KEY || '' }}
-          MACOS_SIGNING_IDENTITY: ${{ inputs.product == 'tinymd' && vars.TINYMD_SIGNING_IDENTITY || vars.METRIX_SIGNING_IDENTITY }}
-          DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+          RELEASE_UPDATE_PUBLIC_KEY: ${{ vars[fromJSON(needs.plan.outputs.credentials).updatePublicKey] }}
+          RELEASE_UPDATE_PRIVATE_KEY: ${{ secrets[fromJSON(needs.plan.outputs.credentials).updatePrivateKey] }}
+          RELEASE_PROFILE_APP_BASE64: ${{ secrets[fromJSON(needs.plan.outputs.credentials).profileApp] }}
+          RELEASE_PROFILE_PREVIEW_BASE64: ${{ secrets[fromJSON(needs.plan.outputs.credentials).profilePreview] }}
+          MACOS_SIGNING_IDENTITY: ${{ vars[fromJSON(needs.plan.outputs.credentials).signingIdentity] }}
+          DEVELOPMENT_TEAM: ${{ vars[fromJSON(needs.plan.outputs.credentials).appleTeamId] }}
         run: python scripts/release/publisher.py build --product "$PRODUCT" --platform "$PLATFORM" --arch "$ARCH"
       - name: Remove ephemeral Apple credentials
         if: always() && steps.apple.outcome != 'skipped' && steps.apple.outcome != ''
@@ -190,10 +154,20 @@ jobs:
       - run: python -m pip install --require-hashes -r scripts/release/requirements.lock
       - name: Verify all packages and advance native feeds
         env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
           PRODUCT: ${{ inputs.product }}
         run: python scripts/release/publisher.py publish --product "$PRODUCT"
       - name: Sync stable Homebrew and Scoop manifests
         env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
           CHANNEL: ${{ inputs.channel }}
           PRODUCT: ${{ inputs.product }}
         run: |
@@ -202,8 +176,13 @@ jobs:
           fi
       - name: Preserve product deployment webhook after Homebrew and Scoop success
         env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
           PRODUCT: ${{ inputs.product }}
-          DEPLOY_WEBHOOK_URL: ${{ inputs.product == 'tinymd' && vars.TINYMD_DEPLOY_WEBHOOK_URL || vars.METRIX_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_WEBHOOK_URL: ${{ vars[fromJSON(needs.plan.outputs.credentials).deployWebhookUrl] }}
         run: python scripts/release/publisher.py webhook --product "$PRODUCT"
 
   cleanup:
@@ -223,5 +202,10 @@ jobs:
       - run: python -m pip install --require-hashes -r scripts/release/requirements.lock
       - name: Delete temporary private packages and diagnostics
         env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ vars.R2_PUBLIC_BUCKET }}
+          R2_PRIVATE_BUCKET: ${{ vars.R2_PRIVATE_BUCKET }}
           PRODUCT: ${{ inputs.product }}
         run: python scripts/release/publisher.py cleanup --product "$PRODUCT"

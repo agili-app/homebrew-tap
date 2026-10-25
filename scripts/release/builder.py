@@ -28,43 +28,21 @@ def build_release(publisher, run, platform, arch):
     baselines = workspace / 'baselines'
     baselines.mkdir(exist_ok=True)
     env = {name: value for name, value in os.environ.items()
-           if not name.startswith('R2_') and name not in {
-               'SOURCE_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN', 'DEVELOPER_ID_P12_BASE64',
-               'DEVELOPER_ID_P12_PASSWORD', 'NOTARY_APPLE_ID', 'NOTARY_APP_SPECIFIC_PASSWORD',
+           if not name.startswith('R2_') and not name.endswith('_TOKEN') and name not in {
+               'DEVELOPER_ID_P12_BASE64', 'DEVELOPER_ID_P12_PASSWORD',
+               'NOTARY_APPLE_ID', 'NOTARY_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID',
                'PROVISIONING_PROFILE_APP_BASE64', 'PROVISIONING_PROFILE_PREVIEW_BASE64',
+               'RELEASE_BASELINES_JSON', 'RELEASE_BASELINES_FILE',
            }}
-    other_keys = ('MYGO_UPDATER_PRIVATE_KEY', 'METRIX_UPDATE_PUBLIC_KEY') if publisher.product == 'tinymd' else (
-        'TINYMD_UPDATE_PRIVATE_KEY', 'TINYMD_UPDATE_PRIVATE_KEY_PATH', 'TINYMD_UPDATE_PUBLIC_KEY')
-    for name in other_keys:
-        env.pop(name, None)
-    env.pop('RELEASE_BASELINES_JSON', None)
-    env.pop('RELEASE_BASELINES_FILE', None)
     baseline_data = publisher.baseline(run, platform, arch, baselines)
-    env['CARGO_TARGET_DIR'] = str(workspace / 'target')
-    env['GOCACHE'] = str(workspace / 'gocache')
-    if env.get('APPLE_TEAM_ID'):
-        env['DEVELOPMENT_TEAM'] = env.get('DEVELOPMENT_TEAM') or env['APPLE_TEAM_ID']
-    key_path = None
+    env['RELEASE_WORKSPACE'] = str(workspace)
     baseline_path = None
     try:
-        if publisher.product == 'metrix-bar':
-            with tempfile.NamedTemporaryFile(prefix='release-baselines-', suffix='.json', dir=workspace,
-                                             delete=False, mode='w', encoding='utf-8') as baseline_file:
-                baseline_path = Path(baseline_file.name)
-                json.dump(baseline_data, baseline_file, ensure_ascii=False)
-            env['RELEASE_BASELINES_FILE'] = str(baseline_path.resolve())
-        else:
-            env['RELEASE_BASELINES_JSON'] = json.dumps(baseline_data)
-        if publisher.product == 'tinymd':
-            secret = env.pop('TINYMD_UPDATE_PRIVATE_KEY', '')
-            if secret:
-                with tempfile.NamedTemporaryFile(prefix='agili-tinymd-key-', delete=False, mode='w') as key:
-                    key_path = Path(key.name)
-                    key_path.chmod(0o600)
-                    key.write(secret)
-                env['TINYMD_UPDATE_PRIVATE_KEY_PATH'] = str(key_path)
-            elif not env.get('TINYMD_UPDATE_PRIVATE_KEY_PATH') or not Path(env['TINYMD_UPDATE_PRIVATE_KEY_PATH']).is_file():
-                raise ReleaseError('TinyMD native private key is required')
+        with tempfile.NamedTemporaryFile(prefix='release-baselines-', suffix='.json', dir=workspace,
+                                         delete=False, mode='w', encoding='utf-8') as baseline_file:
+            baseline_path = Path(baseline_file.name)
+            json.dump(baseline_data, baseline_file, ensure_ascii=False)
+        env['RELEASE_BASELINES_FILE'] = str(baseline_path.resolve())
         command = [sys.executable, str(source / 'scripts/release/build.py'), '--platform', platform, '--arch', arch,
                    '--update-version', record['updateVersion'], '--display-version', record['displayVersion'],
                    '--build-seq', str(record['buildSeq']), '--channel', record['channel'], '--output-dir', str(packages)]
@@ -72,7 +50,6 @@ def build_release(publisher, run, platform, arch):
             result = subprocess.run(command, cwd=source, env=env, stdout=log, stderr=subprocess.STDOUT)
         if result.returncode:
             diagnostic = (workspace / 'private-build.log').read_bytes()
-            # Include the original secret after removing it from the builder environment.
             sensitive = dict(os.environ, **env)
             for name, value in sensitive.items():
                 if value and any(token in name for token in ('KEY', 'TOKEN', 'PASSWORD', 'SECRET', 'BASE64')):
@@ -87,5 +64,3 @@ def build_release(publisher, run, platform, arch):
     finally:
         if baseline_path is not None:
             baseline_path.unlink(missing_ok=True)
-        if key_path is not None:
-            key_path.unlink(missing_ok=True)

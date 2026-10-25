@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 import zipfile
 
-from common import ReleaseError, digest, public_artifact_url, version, validate_build_seq, validate_minimum_system_version
+from common import ReleaseError, digest, public_artifact_url, updater_protocol, version, validate_build_seq, validate_minimum_system_version
 
 
 @dataclass
@@ -19,14 +19,9 @@ class PreparedTarget:
     notes: str
 
 
-def _metrix_build_seq(value):
-    if type(value) is not int:
-        raise ReleaseError('Metrix.Bar buildSeq must be an integer')
-    validate_build_seq(value)
-    return value
-
-
 def prepare_target(product, prefix, base, record, row, bundle):
+    updater = updater_protocol(product)
+    validate_build_seq(record.get('buildSeq'))
     with zipfile.ZipFile(io.BytesIO(bundle)) as archive:
         catalog = json.loads(archive.read('artifacts.json'))
         for key, expected in [('schemaVersion', 1), ('product', product),
@@ -34,11 +29,11 @@ def prepare_target(product, prefix, base, record, row, bundle):
                               ('updateVersion', record['updateVersion'])]:
             if catalog.get(key) != expected:
                 raise ReleaseError('catalog does not match reservation: ' + key)
-        if product == 'metrix-bar':
-            if _metrix_build_seq(catalog.get('buildSeq')) != _metrix_build_seq(record.get('buildSeq')):
-                raise ReleaseError('catalog does not match reservation: buildSeq')
+        validate_build_seq(catalog.get('buildSeq'))
+        if catalog['buildSeq'] != record['buildSeq']:
+            raise ReleaseError('catalog does not match reservation: buildSeq')
         notes = catalog.get('notes')
-        if notes is None and product == 'metrix-bar':
+        if notes is None and updater == 'mygo':
             notes = json.loads(archive.read(catalog['mygoManifestPath'])).get('notes')
         if not isinstance(notes, str) or not notes.strip():
             raise ReleaseError('catalog requires nonempty release notes')
@@ -73,12 +68,12 @@ def prepare_target(product, prefix, base, record, row, bundle):
                 downloads.append({k: v for k, v in info.items() if k != 'key'})
             if entry['kind'] == 'update' or entry.get('updater'):
                 updates.append(info)
-                if product == 'metrix-bar':
+                if updater == 'mygo':
                     for delta in entry.get('deltas', []):
                         artifact(delta['path'])
                         if delta.get('signaturePath'):
                             artifact(delta['signaturePath'])
-                if product == 'tinymd':
+                if updater == 'gpui':
                     signature = artifact(entry['signaturePath'])
                     info.update(signatureKey=signature['key'], signatureSha256=signature['sha256'])
                     asset = {k: info[k] for k in ('name', 'url', 'size', 'arch', 'format', 'sha256')}
@@ -97,9 +92,10 @@ def prepare_target(product, prefix, base, record, row, bundle):
         if not downloads or not updates:
             raise ReleaseError('target needs an installer and updater payload')
         native = None
-        if product == 'metrix-bar':
+        if updater == 'mygo':
             native = json.loads(archive.read(catalog['mygoManifestPath']))
-            if _metrix_build_seq(native.get('buildSeq')) != record['buildSeq']:
+            validate_build_seq(native.get('buildSeq'))
+            if native['buildSeq'] != record['buildSeq']:
                 raise ReleaseError('native MyGO manifest does not match reservation: buildSeq')
             native['notes'] = notes
             if native['version'] != record['updateVersion'] or not native.get('signature'):

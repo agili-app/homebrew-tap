@@ -47,7 +47,7 @@ def main():
         state, _ = publisher.state()
         if str(args.run_id) in state['runs']:
             raise ReleaseError('run already reserved; start a new workflow_dispatch release')
-        repo = PRODUCTS[args.product][0]
+        repo = PRODUCTS[args.product]['repo']
         sha = github(repo + '/commits/' + quote(os.environ.get('SOURCE_REF', 'main'), safe=''))['sha']
         if not re.fullmatch('[0-9a-f]{40}', sha):
             raise ReleaseError('source commit must be full SHA')
@@ -56,7 +56,9 @@ def main():
         record = publisher.reserve(args.run_id, os.environ['CHANNEL'], os.environ.get('VERSION', ''), os.environ.get('BUMP', 'patch'), sha, matrix, os.environ.get('SOURCE_REF', 'main'), rebuild)
         publisher.prune_stages(args.run_id)
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            output.write('sha=' + record['sourceSha'] + '\nrepo=' + PRODUCTS[args.product][0] + '\nmatrix=' + json.dumps({'include': record['matrix']}) + '\n')
+            output.write('sha=' + record['sourceSha'] + '\nrepo=' + repo
+                         + '\nmatrix=' + json.dumps({'include': record['matrix']})
+                         + '\ncredentials=' + json.dumps(PRODUCTS[args.product]['credentials']) + '\n')
     elif args.command == 'cleanup':
         publisher.cleanup_run(args.run_id)
     elif args.command == 'build':

@@ -179,7 +179,7 @@ def main():
     parser.add_argument('--product', required=True, choices=PRODUCTS)
     args = parser.parse_args()
     store = R2()
-    prefix = PRODUCTS[args.product][1]
+    prefix = PRODUCTS[args.product]['prefix']
     def stable():
         data, _ = store.get(f'{prefix}/release-info.json')
         return json.loads(data)['channels']['stable'] if data else None

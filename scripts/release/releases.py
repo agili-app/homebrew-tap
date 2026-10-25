@@ -5,14 +5,15 @@ from datetime import datetime, timezone
 from email.message import Message
 
 from artifacts import prepare_target
-from common import PRODUCTS, DYNAMIC, IMMUTABLE, ReleaseError, digest, encoded, public_artifact_url, version, validate_build_seq
+from common import PRODUCTS, DYNAMIC, IMMUTABLE, ReleaseError, digest, encoded, public_artifact_url, updater_protocol, version, validate_build_seq
 
 
 class Publisher:
     def __init__(self, store, product, base=None):
         self.store = store
         self.product = product
-        self.prefix = PRODUCTS[product][1]
+        self.prefix = PRODUCTS[product]['prefix']
+        self.updater = updater_protocol(product)
         self.base = (base or f'https://downloads.agili.app/{self.prefix}').rstrip('/')
         if not self.base.startswith('https://'):
             raise ReleaseError('public download base must be HTTPS')
@@ -223,13 +224,13 @@ class Publisher:
         self.save(state, etag)
         state, etag = self.state()
         record = state['runs'][str(run)]
-        if self.product == 'tinymd':
-            feed = {'schema_version': 1, 'version': record['updateVersion'], 'notes': release['notes'],
-                    'assets': [a for _, item in prepared for a in item.assets]}
+        if self.updater == 'gpui':
+            feed = {'schema_version': 1, 'version': record['updateVersion'], 'buildSeq': record['buildSeq'],
+                    'notes': release['notes'], 'assets': [a for _, item in prepared for a in item.assets]}
             payload = encoded(feed)
             for channel in channels:
                 self.store.put(f'{self.prefix}/feeds/{channel}/latest.json', payload, cache=DYNAMIC)
-        else:
+        elif self.updater == 'mygo':
             for row, item in prepared:
                 target = {'macos': 'darwin', 'windows': 'windows', 'linux': 'linux'}[row['platform']] + '-' + {'x86_64': 'amd64', 'arm64': 'arm64', 'universal': 'universal'}[row['arch']]
                 payload = encoded(item.native)
