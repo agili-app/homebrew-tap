@@ -145,7 +145,7 @@ def main(native_platform):
     elif native_platform == 'linux':
         run(['sudo', 'apt-get', 'update'])
         run(['sudo', 'apt-get', 'install', '-y', 'build-essential', 'pkg-config', 'clang', 'libfreetype-dev', 'libwebp-dev', 'libvulkan-dev', 'cmake', 'libsodium-dev', 'libssl-dev', 'libfontconfig1-dev',
-             'libxcb1-dev', 'libxkbcommon-dev', 'libxkbcommon-x11-dev', 'libwayland-dev', 'libegl1-mesa-dev'])
+             'libxcb1-dev', 'libdbus-1-dev', 'libxkbcommon-dev', 'libxkbcommon-x11-dev', 'libwayland-dev', 'libegl1-mesa-dev'])
     elif native_platform == 'windows':
         windows_fxc()
     else:
