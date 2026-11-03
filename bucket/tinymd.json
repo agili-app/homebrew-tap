@@ -1,27 +1,27 @@
 {
-    "version": "0.0.1.14",
+    "version": "0.1.0.28",
     "description": "A minimal Markdown editor",
     "homepage": "https://tinymd.app",
     "license": "Proprietary",
     "architecture": {
         "arm64": {
             "url": [
-                "https://downloads.agili.app/stable/tinymd-app/releases/0.0.1/build-14/windows-arm64/TinyMD-0.0.1-windows-arm64.exe#/TinyMD.exe",
-                "https://downloads.agili.app/stable/tinymd-app/releases/0.0.1/build-14/windows-arm64/TinyMD-0.0.1-windows-arm64-cli.exe#/tinymd-cli.exe"
+                "https://downloads.agili.app/stable/tinymd-app/releases/0.1.0/build-28/windows-arm64/TinyMD-0.1.0-windows-arm64.exe#/TinyMD.exe",
+                "https://downloads.agili.app/stable/tinymd-app/releases/0.1.0/build-28/windows-arm64/TinyMD-0.1.0-windows-arm64-cli.exe#/tinymd-cli.exe"
             ],
             "hash": [
-                "ea415113b660c1eb67dce8114a2780729eb32205ab3c0c2e46a51d360074eed6",
-                "dd0c914825d296ca51d2e313c328c1da83506539667e5ff335102685d556ca5e"
+                "c690a13eb1b9b554a7c93ba7c88160dadb023a727ab0239d6969466271c49da0",
+                "64b5ec401b7d48bd143bb356c24b91a111a30ed3852d41a0680bc0482cc852b3"
             ]
         },
         "64bit": {
             "url": [
-                "https://downloads.agili.app/stable/tinymd-app/releases/0.0.1/build-14/windows-x86_64/TinyMD-0.0.1-windows-x86_64.exe#/TinyMD.exe",
-                "https://downloads.agili.app/stable/tinymd-app/releases/0.0.1/build-14/windows-x86_64/TinyMD-0.0.1-windows-x86_64-cli.exe#/tinymd-cli.exe"
+                "https://downloads.agili.app/stable/tinymd-app/releases/0.1.0/build-28/windows-x86_64/TinyMD-0.1.0-windows-x86_64.exe#/TinyMD.exe",
+                "https://downloads.agili.app/stable/tinymd-app/releases/0.1.0/build-28/windows-x86_64/TinyMD-0.1.0-windows-x86_64-cli.exe#/tinymd-cli.exe"
             ],
             "hash": [
-                "7cf868d5c45a76be4ac604a1bd1d2726c4e887baed458bf4f1d2bc499bd8d90a",
-                "b8f84826725b85cd373cc09c684bca8067121290354b88aa66a399d9c9553a35"
+                "3fa9701c9486295e8f7787626bd6bd01347b883591cbd42b8758da8ec2d13160",
+                "a1ccd26f3f1792d9908ab9167ab7b343c2f2c2001d3156d810f4fd9087eb9a6a"
             ]
         }
     },
