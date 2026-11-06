@@ -1,5 +1,5 @@
 cask "metrix-bar" do
-  version "0.1.0"
+  version "0.1.1"
 
   name "Metrix.Bar"
   desc "A minimal menu bar metrics monitor"
@@ -9,12 +9,12 @@ cask "metrix-bar" do
 
   on_macos do
     on_arm do
-      sha256 "3a07a0081d43f24cbe4fdc5cc956f4ff6b2b31ce7ff0e714387516c891652268"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.0/build-28/macos-arm64/metrix-bar-0.1.0-arm64.dmg"
+      sha256 "364441169f5c92f57a916670ba8e6956713d39d74b512665ac8daeeec24c6a16"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/macos-arm64/metrix-bar-0.1.1-arm64.dmg"
     end
     on_intel do
-      sha256 "1e85e17d4b02feaffc64e087c82eaaebbc89c6448a83274a0145f14f4351a337"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.0/build-28/macos-x86_64/metrix-bar-0.1.0-amd64.dmg"
+      sha256 "e94ae6226ae109f34d014e325343fd8bc5309a87c501cd48d03a699a0147b29b"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/macos-x86_64/metrix-bar-0.1.1-amd64.dmg"
     end
 
     depends_on macos: :monterey
@@ -31,12 +31,12 @@ cask "metrix-bar" do
 
   on_linux do
     on_arm do
-      sha256 "db1c93fede4268445393dd7b995d071a4dd75c93c58a09d3ef54d7d133a8f8e8"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.0/build-28/linux-arm64/metrix-bar-0.1.0-linux-arm64.tar.gz"
+      sha256 "ba8fe67e0c1c6df5f82eaa0413b5e1ac8e28aca01907c969dada602d4d7388de"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/linux-arm64/metrix-bar-0.1.1-linux-arm64.tar.gz"
     end
     on_intel do
-      sha256 "9a49e2ba0ff230d1c532d5ff8314dd550003c7c636fda492b7ff6f3f7c71f625"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.0/build-28/linux-x86_64/metrix-bar-0.1.0-linux-amd64.tar.gz"
+      sha256 "c7ca6ff380c6f2c75896a9192ad4f2a0dd27b9b24de295928263a57eaadfb855"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/linux-x86_64/metrix-bar-0.1.1-linux-amd64.tar.gz"
     end
 
     binary "metrix-bar"
