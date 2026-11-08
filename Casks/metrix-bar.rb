@@ -1,5 +1,5 @@
 cask "metrix-bar" do
-  version "0.1.1"
+  version "0.1.2"
 
   name "Metrix.Bar"
   desc "A minimal menu bar metrics monitor"
@@ -9,15 +9,15 @@ cask "metrix-bar" do
 
   on_macos do
     on_arm do
-      sha256 "364441169f5c92f57a916670ba8e6956713d39d74b512665ac8daeeec24c6a16"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/macos-arm64/metrix-bar-0.1.1-arm64.dmg"
+      sha256 "5ccff9e106d9953c36b53a5d7c1f0def8b42bb6381a0dea2997a37823ff1f17a"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.2/build-37/macos-arm64/metrix-bar-0.1.2-arm64.dmg"
     end
     on_intel do
-      sha256 "e94ae6226ae109f34d014e325343fd8bc5309a87c501cd48d03a699a0147b29b"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/macos-x86_64/metrix-bar-0.1.1-amd64.dmg"
+      sha256 "43e1a1b0e418bf3245eb2babef8b8f458c1cc6356e358f995c464965b892332f"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.2/build-37/macos-x86_64/metrix-bar-0.1.2-amd64.dmg"
     end
 
-    depends_on macos: :monterey
+    depends_on macos: :ventura
 
     app "Metrix.Bar.app"
 
@@ -31,12 +31,12 @@ cask "metrix-bar" do
 
   on_linux do
     on_arm do
-      sha256 "ba8fe67e0c1c6df5f82eaa0413b5e1ac8e28aca01907c969dada602d4d7388de"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/linux-arm64/metrix-bar-0.1.1-linux-arm64.tar.gz"
+      sha256 "5cc936a62222238ff0a58bb34bcb21de48aad37445bf92ccb94b2b0807da5846"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.2/build-37/linux-arm64/metrix-bar-0.1.2-linux-arm64.tar.gz"
     end
     on_intel do
-      sha256 "c7ca6ff380c6f2c75896a9192ad4f2a0dd27b9b24de295928263a57eaadfb855"
-      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.1/build-34/linux-x86_64/metrix-bar-0.1.1-linux-amd64.tar.gz"
+      sha256 "05b575e7ef5398a3c864ba0300661a3d9caf7d1b2960a3ec7f9c382054a67322"
+      url "https://downloads.agili.app/stable/metrix-bar/releases/0.1.2/build-37/linux-x86_64/metrix-bar-0.1.2-linux-amd64.tar.gz"
     end
 
     binary "metrix-bar"
