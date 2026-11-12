@@ -121,12 +121,14 @@ def sign(paths):
     for path in paths:
         if not path.is_file():
             raise RuntimeError(f'Windows signing input is missing: {path.name}')
-        if path.suffix.lower() in {'.exe', '.dll'}:
-            pe.append(path)
-        elif path.suffix.lower() == '.msix':
+        if path.suffix.lower() == '.msix':
             packages.append(path)
         else:
-            raise RuntimeError(f'Unsupported Windows signing format: {path.suffix}')
+            # NSIS signs its uninstaller under a temporary .tmp filename.
+            with path.open('rb') as source:
+                if source.read(2) != b'MZ':
+                    raise RuntimeError(f'Unsupported Windows signing format: {path.name}')
+            pe.append(path)
     if pe:
         executable = next((root / 'ssign').rglob('ssign.exe'))
         cloud_sign([str(executable), '--timestamp-url', TIMESTAMP_URL, *map(str, pe)], env)
