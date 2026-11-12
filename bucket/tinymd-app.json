@@ -1,16 +1,16 @@
 {
-    "version": "0.1.4.47",
+    "version": "0.1.5.48",
     "description": "A minimal Markdown editor",
     "homepage": "https://tinymd.app",
     "license": "Proprietary",
     "architecture": {
         "arm64": {
-            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.4/build-47/windows-arm64/TinyMD-0.1.4-windows-arm64.exe#/TinyMD.exe",
-            "hash": "58c82f6c561b6bae3e918efd7045c7a36d0e2b96919ce5e5e68bb1c0140c27bd"
+            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.5/build-48/windows-arm64/TinyMD-0.1.5-windows-arm64.exe#/TinyMD.exe",
+            "hash": "5e234280bf189e9167c5379bc6e2767992708f38dacd451a02603b335f5ee8d4"
         },
         "64bit": {
-            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.4/build-47/windows-x86_64/TinyMD-0.1.4-windows-x86_64.exe#/TinyMD.exe",
-            "hash": "fbe023bdbc7f3cb244681cba0aa80787f1e8145981536d64c2bd6e3607cd74fe"
+            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.5/build-48/windows-x86_64/TinyMD-0.1.5-windows-x86_64.exe#/TinyMD.exe",
+            "hash": "634ef6d1123c285601be04555156fd4f7c12799da3e2da43d00bff5038b474f3"
         }
     },
     "bin": [
