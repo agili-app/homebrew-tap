@@ -14,9 +14,23 @@ class PreparedTarget:
     files: dict[str, bytes]
     downloads: list[dict]
     updates: list[dict]
+    companions: list[dict]
     assets: list[dict]
     native: dict | None
     notes: str
+
+
+def validate_artifact(entry, platform):
+    kind, fmt, role = entry['kind'], entry['format'], entry.get('role', 'gui')
+    if kind == 'companion':
+        if (platform != 'windows' or (role, fmt) not in {('widgets', 'msix'), ('widget-runtime', 'zip')}
+                or entry.get('updater') or entry.get('deltas')):
+            raise ReleaseError('invalid companion role/format or updater')
+    elif kind not in {'installer', 'update'} or fmt not in {'dmg', 'zip', 'exe', 'tar.gz', 'deb', 'appimage'}:
+        raise ReleaseError('invalid artifact kind/format')
+    elif role not in {'gui', 'cli'} or (role == 'cli' and (kind == 'update' or entry.get('updater'))):
+        raise ReleaseError('invalid artifact role or CLI updater')
+    return role
 
 
 def prepare_target(product, prefix, base, record, row, bundle):
@@ -37,7 +51,7 @@ def prepare_target(product, prefix, base, record, row, bundle):
             notes = json.loads(archive.read(catalog['mygoManifestPath'])).get('notes')
         if not isinstance(notes, str) or not notes.strip():
             raise ReleaseError('catalog requires nonempty release notes')
-        files, downloads, updates, assets = {}, [], [], []
+        files, downloads, updates, companions, assets = {}, [], [], [], []
         def artifact(path):
             if not path or Path(path).is_absolute() or '..' in Path(path).parts or '\\' in path:
                 raise ReleaseError('unsafe catalog path')
@@ -50,12 +64,8 @@ def prepare_target(product, prefix, base, record, row, bundle):
             return {'name': name, 'url': public_artifact_url(base, key, prefix),
                     'size': len(data), 'sha256': digest(data), 'key': key}
         for entry in catalog['artifacts']:
-            if entry['kind'] not in {'installer', 'update'} or entry['format'] not in {'dmg', 'zip', 'exe', 'tar.gz', 'deb', 'appimage'}:
-                raise ReleaseError('invalid artifact kind/format')
+            role = validate_artifact(entry, row['platform'])
             info = {**artifact(entry['path']), 'platform': row['platform'], 'arch': row['arch'], 'format': entry['format']}
-            role = entry.get('role', 'gui')
-            if role not in {'gui', 'cli'} or (role == 'cli' and (entry['kind'] == 'update' or entry.get('updater'))):
-                raise ReleaseError('invalid artifact role or CLI updater')
             if 'role' in entry:
                 info['role'] = role
             if not info['size']:
@@ -64,7 +74,9 @@ def prepare_target(product, prefix, base, record, row, bundle):
                 validate_minimum_system_version(entry.get('minimumSystemVersion'))
             if entry.get('minimumSystemVersion'):
                 info['minimumSystemVersion'] = entry['minimumSystemVersion']
-            if entry['kind'] == 'installer':
+            if entry['kind'] == 'companion':
+                companions.append({k: v for k, v in info.items() if k != 'key'})
+            elif entry['kind'] == 'installer':
                 downloads.append({k: v for k, v in info.items() if k != 'key'})
             if entry['kind'] == 'update' or entry.get('updater'):
                 updates.append(info)
@@ -128,7 +140,8 @@ def prepare_target(product, prefix, base, record, row, bundle):
             for info in updates:
                 if info['url'] == native['url']:
                     info['nativeManifest'] = native
-        return PreparedTarget(files, downloads, updates, assets, native, notes)
+        return PreparedTarget(files=files, downloads=downloads, updates=updates, companions=companions,
+                              assets=assets, native=native, notes=notes)
 
 
 def bundle_directory(directory):

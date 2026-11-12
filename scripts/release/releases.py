@@ -218,6 +218,9 @@ class Publisher:
         updates = [a for _, item in prepared for a in item.updates]
         release = {k: record[k] for k in ('displayVersion', 'updateVersion', 'channel', 'buildSeq', 'publishedAt')}
         release.update(notes=record.get('notes', ''), downloads=downloads)
+        companions = [a for _, item in prepared for a in item.companions]
+        if companions:
+            release['companions'] = companions
         for channel in channels:
             highwaters[channel] = {'runId': str(run), 'updateVersion': record['updateVersion'], 'buildSeq': record['buildSeq']}
         # Freeze all selected channels before the first mutable PUT, even if a later PUT fails.

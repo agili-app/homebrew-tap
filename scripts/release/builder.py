@@ -52,7 +52,7 @@ def build_release(publisher, run, platform, arch):
             diagnostic = (workspace / 'private-build.log').read_bytes()
             sensitive = dict(os.environ, **env)
             for name, value in sensitive.items():
-                if value and any(token in name for token in ('KEY', 'TOKEN', 'PASSWORD', 'SECRET', 'BASE64')):
+                if value and (name == 'CERTUM_EMAIL' or any(token in name for token in ('KEY', 'TOKEN', 'PASSWORD', 'SECRET', 'BASE64', 'OTP'))):
                     diagnostic = diagnostic.replace(value.encode(), b'[REDACTED]')
             log_key = f'debug/{publisher.prefix}/{run}/{platform}-{arch}/private-build.log'
             publisher.store.put(log_key, diagnostic, True)

@@ -116,6 +116,10 @@ jobs:
           NOTARY_APPLE_ID: ${{ secrets[fromJSON(needs.plan.outputs.credentials).notaryAppleId] }}
           NOTARY_APP_SPECIFIC_PASSWORD: ${{ secrets[fromJSON(needs.plan.outputs.credentials).notaryPassword] }}
         run: python scripts/release/apple_signing.py prepare
+      - name: Prepare verified Windows signing tools
+        id: windows
+        if: matrix.platform == 'windows'
+        run: python scripts/release/windows_signing.py prepare
       # No public cache or CI artifact contains private source/target/GOCACHE.
       - name: Build and stage signed packages in private R2
         env:
@@ -133,7 +137,12 @@ jobs:
           RELEASE_PROFILE_PREVIEW_BASE64: ${{ secrets[fromJSON(needs.plan.outputs.credentials).profilePreview] }}
           MACOS_SIGNING_IDENTITY: ${{ vars[fromJSON(needs.plan.outputs.credentials).signingIdentity] }}
           DEVELOPMENT_TEAM: ${{ vars[fromJSON(needs.plan.outputs.credentials).appleTeamId] }}
+          CERTUM_EMAIL: ${{ matrix.platform == 'windows' && secrets.CERTUM_EMAIL || '' }}
+          CERTUM_OTP: ${{ matrix.platform == 'windows' && secrets.CERTUM_OTP || '' }}
         run: python scripts/release/publisher.py build --product "$PRODUCT" --platform "$PLATFORM" --arch "$ARCH"
+      - name: Remove ephemeral Windows signing tools and sessions
+        if: always() && steps.windows.outcome != 'skipped' && steps.windows.outcome != ''
+        run: python scripts/release/windows_signing.py cleanup
       - name: Remove ephemeral Apple credentials
         if: always() && steps.apple.outcome != 'skipped' && steps.apple.outcome != ''
         run: python scripts/release/apple_signing.py cleanup
