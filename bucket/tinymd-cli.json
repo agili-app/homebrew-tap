@@ -1,16 +1,16 @@
 {
-    "version": "0.1.3.43",
+    "version": "0.1.4.47",
     "description": "A command-line tool for Markdown documents",
     "homepage": "https://tinymd.app",
     "license": "Proprietary",
     "architecture": {
         "arm64": {
-            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.3/build-43/windows-arm64/TinyMD-0.1.3-windows-arm64-cli.exe#/tinymd-cli.exe",
-            "hash": "697838b481cfd99c5d5ea3e8777338632467a6e6a325f0c1fb42e8574c662e00"
+            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.4/build-47/windows-arm64/TinyMD-0.1.4-windows-arm64-cli.exe#/tinymd-cli.exe",
+            "hash": "b5d68542b4585dfb7538f7902d0266740a5992e09fa604944ed48e6f23fd96d2"
         },
         "64bit": {
-            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.3/build-43/windows-x86_64/TinyMD-0.1.3-windows-x86_64-cli.exe#/tinymd-cli.exe",
-            "hash": "cbc2e7dd2041c44f41f9a7a5bc6d932819a58dcd3c191e17e80aabb8de4f6236"
+            "url": "https://downloads.agili.app/stable/tinymd-app/releases/0.1.4/build-47/windows-x86_64/TinyMD-0.1.4-windows-x86_64-cli.exe#/tinymd-cli.exe",
+            "hash": "ba37a346e1f666cd332f7d3436ac6ae40068483bb1fe80aa47aded412c397592"
         }
     },
     "bin": [
