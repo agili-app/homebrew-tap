@@ -1,5 +1,5 @@
 cask "tinymd" do
-  version "0.1.6"
+  version "0.1.7"
 
   name "TinyMD"
   desc "A minimal Markdown editor"
@@ -10,12 +10,12 @@ cask "tinymd" do
 
   on_macos do
     on_arm do
-      sha256 "f943c5086ad55be58d8043b9aa51d4ed1efc04b59ae5380b818a628aefff7e6f"
-      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.6/build-49/macos-arm64/TinyMD-0.1.6-macos-arm64.dmg"
+      sha256 "f7c1fbc685634c528d2defcab056fc75b52f746a79426eb094fe875db6fc1b28"
+      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.7/build-51/macos-arm64/TinyMD-0.1.7-macos-arm64.dmg"
     end
     on_intel do
-      sha256 "937bf59e6443225115720338f1ea1565a2e9e72616b66167cff4bf41d25fb6af"
-      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.6/build-49/macos-x86_64/TinyMD-0.1.6-macos-x86_64.dmg"
+      sha256 "87353bd5f985b6b068e14cfd842a853fb4cfb006a584650aaa825e033bb04313"
+      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.7/build-51/macos-x86_64/TinyMD-0.1.7-macos-x86_64.dmg"
     end
 
     # macOS 15.3 required; Homebrew allows 15.0+, but macOS <15.3 is rejected by LSMinimumSystemVersion on launch.
@@ -36,12 +36,12 @@ cask "tinymd" do
 
   on_linux do
     on_arm do
-      sha256 "549d86f0a3a308ae2aa0428edf99fb123339adb1003824322d90607ad232097d"
-      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.6/build-49/linux-arm64/TinyMD-0.1.6-linux-arm64.tar.gz"
+      sha256 "e5660042a559ba86b0c4d67a2659da2614560b61655141ba1fef24449d7ad64a"
+      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.7/build-51/linux-arm64/TinyMD-0.1.7-linux-arm64.tar.gz"
     end
     on_intel do
-      sha256 "9546a6a3a01b243bf3c4280490274a0b8958ab148c3672886ea54eaf1e1b4cc3"
-      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.6/build-49/linux-x86_64/TinyMD-0.1.6-linux-x86_64.tar.gz"
+      sha256 "4469d3f5fe00c5fd1615167ad5b6b3298503f294406861166048c7155cb80284"
+      url "https://downloads.agili.app/stable/tinymd-app/releases/0.1.7/build-51/linux-x86_64/TinyMD-0.1.7-linux-x86_64.tar.gz"
     end
 
     depends_on cask: "agili-app/tap/tinymd-cli"
