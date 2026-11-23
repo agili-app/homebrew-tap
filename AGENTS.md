@@ -8,7 +8,7 @@
 
 ## 验证
 
-- 发布脚本使用 uv（Python 版本以 `.python-version` 为准，依赖与哈希锁在 `pyproject.toml` / `uv.lock`），按 CI 锁文件同步：`uv sync --frozen --no-build`；`build` job 同时将 `.venv` 可执行目录写入 `GITHUB_PATH`，供下游源码 `setup/action.yml` 与打包脚本复用。
+- 发布脚本统一使用 uv（Python 版本以 `.python-version` 为准，依赖与哈希锁在 `pyproject.toml` / `uv.lock`，不回退系统 `python3`），按 CI 锁文件同步：`uv sync --frozen --no-build`。
 - Python 语法检查：`uv run --frozen python -c 'import ast,pathlib; files=list(pathlib.Path("scripts/release").glob("*.py")); [ast.parse(p.read_text(), filename=str(p)) for p in files]; print(f"checked {len(files)} scripts")'`，不导入或执行发布模块。
 - `scripts/` 下不新增或保留测试脚本；验证使用语法检查与必要的临时离线检查，临时检查脚本放在仓库外。
 - Cask 语法检查：`for cask in Casks/*.rb; do ruby -c "$cask" || exit; done`；修改后同时 `git diff --check`。这些检查不等于原生打包、签名或发布端到端验证。
