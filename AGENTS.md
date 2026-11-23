@@ -8,8 +8,8 @@
 
 ## 验证
 
-- 发布脚本依赖按 CI 锁文件安装：`python3 -m pip install --require-hashes -r scripts/release/requirements.lock`；使用隔离环境，CI Python 版本见 `.github/workflows/release.yml`。
-- Python 语法检查：`python3 -c 'import ast,pathlib; files=list(pathlib.Path("scripts/release").glob("*.py")); [ast.parse(p.read_text(), filename=str(p)) for p in files]; print(f"checked {len(files)} scripts")'`，不导入或执行发布模块。
+- 发布脚本使用 uv（Python 版本以 `.python-version` 为准，依赖与哈希锁在 `pyproject.toml` / `uv.lock`），按 CI 锁文件同步：`uv sync --frozen --no-build`；`build` job 同时将 `.venv` 可执行目录写入 `GITHUB_PATH`，供下游源码 `setup/action.yml` 与打包脚本复用。
+- Python 语法检查：`uv run --frozen python -c 'import ast,pathlib; files=list(pathlib.Path("scripts/release").glob("*.py")); [ast.parse(p.read_text(), filename=str(p)) for p in files]; print(f"checked {len(files)} scripts")'`，不导入或执行发布模块。
 - `scripts/` 下不新增或保留测试脚本；验证使用语法检查与必要的临时离线检查，临时检查脚本放在仓库外。
 - Cask 语法检查：`for cask in Casks/*.rb; do ruby -c "$cask" || exit; done`；修改后同时 `git diff --check`。这些检查不等于原生打包、签名或发布端到端验证。
 
@@ -45,6 +45,6 @@
 - Scoop 清单由 `scripts/release/sync_scoop.py` 从 stable 的 Windows exe 元数据生成到 `bucket/`，版本为 `displayVersion.buildSeq`，使同版 rebuild 仍可升级。TinyMD 提供 App+CLI、仅 App、仅 CLI 三个入口，主包只使用 GUI/CLI 架构交集，无可用架构时失败且不写半套清单；支持 arm64 与 x86_64（Scoop `64bit`）。Metrix.Bar 通过 URL `#/dl.7z` 解包 NSIS，不执行安装器，数据保留在应用默认 AppData 位置。
 - stable 的 `sync_cask.py` 在隔离 checkout 中读取同一份最新 stable，同次提交 Cask 与 Scoop，沿用 fetch/regenerate/retry；preview 不同步。Scoop 不设置 checkver/autoupdate，URL/hash 只取发布元数据，许可证使用 Proprietary。官方清单 schema 与解包行为参考 https://github.com/ScoopInstaller/Scoop ，核对 commit `e6aa3b366bdee8ed138c1e0f7b85192ebdd35d0f` 的 `schema.json`、`lib/decompress.ps1`。
 - 保留不可变 release 路径、签名与 updateVersion 绑定、状态及公开索引一致性；平台签名不能替代 payload / delta 验签。
-- 公共 CI 不上传私有源码、私钥或编译缓存；依赖缓存仅允许固定 SHA 源码 setup 验证通过的公共目录，保留第三方 Action 的完整 SHA 锁定与 Python hash 锁文件。
+- 公共 CI 不上传私有源码、私钥或编译缓存；依赖缓存仅允许固定 SHA 源码 setup 验证通过的公共目录，保留第三方 Action 的完整 SHA 锁定与 `uv.lock` 哈希锁文件（`setup-uv` 关闭公共缓存）。
 - `.private-source/`、`.release-output/`、工具、缓存、报告与本地凭据按 `.gitignore` 排除，不写入日志或 Git。
 - 本仓库提交与官网子模块指针更新是两个独立操作；不要在官网普通改动中顺带推进发布仓库指针。
