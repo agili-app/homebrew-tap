@@ -23,8 +23,11 @@ class PreparedTarget:
 def validate_artifact(entry, platform):
     kind, fmt, role = entry['kind'], entry['format'], entry.get('role', 'gui')
     if kind == 'companion':
-        if (platform != 'windows' or (role, fmt) not in {('widgets', 'msix'), ('widget-runtime', 'zip')}
-                or entry.get('updater') or entry.get('deltas')):
+        supported = {
+            'windows': {('widgets', 'msix'), ('widget-runtime', 'zip')},
+            'linux': {('file-actions-nautilus', 'deb'), ('file-actions-thunar', 'deb'), ('file-actions-dolphin', 'deb')},
+        }
+        if (role, fmt) not in supported.get(platform, ()) or entry.get('updater') or entry.get('deltas'):
             raise ReleaseError('invalid companion role/format or updater')
     elif kind not in {'installer', 'update'} or fmt not in {'dmg', 'zip', 'exe', 'tar.gz', 'deb', 'appimage'}:
         raise ReleaseError('invalid artifact kind/format')
