@@ -18,6 +18,24 @@ class PreparedTarget:
     assets: list[dict]
     native: dict | None
     notes: str
+    changelog: list[dict] | None = None
+
+
+def validate_changelog(entries):
+    if entries is None:
+        return None
+    if not isinstance(entries, list) or not entries:
+        raise ReleaseError('catalog changelog must be a nonempty list')
+    result = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'version', 'notes'}:
+            raise ReleaseError('invalid catalog changelog entry')
+        item_version, item_notes = entry['version'], entry['notes']
+        if not isinstance(item_version, str) or not isinstance(item_notes, str) or not item_notes.strip():
+            raise ReleaseError('catalog changelog entry requires version and nonempty notes')
+        version(item_version)
+        result.append({'version': item_version, 'notes': item_notes.strip()})
+    return result
 
 
 def validate_artifact(entry, platform):
@@ -54,6 +72,7 @@ def prepare_target(product, prefix, base, record, row, bundle):
             notes = json.loads(archive.read(catalog['mygoManifestPath'])).get('notes')
         if not isinstance(notes, str) or not notes.strip():
             raise ReleaseError('catalog requires nonempty release notes')
+        changelog = validate_changelog(catalog.get('changelog'))
         files, downloads, updates, companions, assets = {}, [], [], [], []
         def artifact(path):
             if not path or Path(path).is_absolute() or '..' in Path(path).parts or '\\' in path:
@@ -144,7 +163,7 @@ def prepare_target(product, prefix, base, record, row, bundle):
                 if info['url'] == native['url']:
                     info['nativeManifest'] = native
         return PreparedTarget(files=files, downloads=downloads, updates=updates, companions=companions,
-                              assets=assets, native=native, notes=notes)
+                              assets=assets, native=native, notes=notes, changelog=changelog)
 
 
 def bundle_directory(directory):

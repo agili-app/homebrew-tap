@@ -210,6 +210,10 @@ class Publisher:
         if len(all_notes) != 1:
             raise ReleaseError('platform release notes must match')
         record['notes'] = next(iter(all_notes))
+        all_changelogs = {None if item.changelog is None else encoded(item.changelog) for _, item in prepared}
+        if len(all_changelogs) != 1:
+            raise ReleaseError('platform release changelogs must match')
+        changelog = prepared[0][1].changelog
         # No mutable object changes until the complete matrix validates and all immutable bytes are reachable.
         for _, item in prepared:
             for key, data in item.files.items():
@@ -230,6 +234,8 @@ class Publisher:
         if self.updater == 'gpui':
             feed = {'schema_version': 1, 'version': record['updateVersion'], 'buildSeq': record['buildSeq'],
                     'notes': release['notes'], 'assets': [a for _, item in prepared for a in item.assets]}
+            if changelog is not None:
+                feed['changelog'] = changelog
             payload = encoded(feed)
             for channel in channels:
                 self.store.put(f'{self.prefix}/feeds/{channel}/latest.json', payload, cache=DYNAMIC)
